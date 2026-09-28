@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 import { isClosedStatus } from "@/lib/constants";
-import { ATTACHMENT_LIMITS, ticketCreateSchema, ticketUpdateSchema, toFieldErrors, type TicketUpdateInput } from "@/lib/schemas";
+import { ticketCreateSchema, ticketUpdateSchema, toFieldErrors, type TicketUpdateInput } from "@/lib/schemas";
+import type { BlobUpload } from "@/lib/schemas";
 import type { Attachment, SessionUser, Ticket, TicketMessage } from "@/types";
 import { db } from "../db";
 import {
@@ -17,6 +18,7 @@ import {
 import { ticketNumber } from "../db/seed/people";
 import { badRequest, invalid, notFound } from "../errors";
 import { parseId, References } from "../resource";
+import { attachmentLimits, blobMetadata, blobStorageEnabled, deleteBlobs, ticketBlobPrefix } from "../storage";
 import { notify } from "./notifications";
 import {
   agentIdByName,
@@ -270,20 +272,50 @@ async function helpTopicGrace(helpTopicId: number) {
 
 export async function deleteTicket(rawId: string) {
   const ticket = await ticketRecord(rawId);
-  // Messages and their attachments cascade.
+  const blobs = await db
+    .select({ pathname: attachments.blobPathname })
+    .from(attachments)
+    .innerJoin(messages, eq(messages.id, attachments.messageId))
+    .where(and(eq(messages.ticketId, ticket.id), isNotNull(attachments.blobPathname)));
+  // Messages and their attachment rows cascade; blob files are removed separately.
   await db.delete(tickets).where(eq(tickets.id, ticket.id));
+  await deleteBlobs(blobs.map((b) => b.pathname!));
   return { id: ticket.id };
 }
 
-export async function addReply(rawId: string, body: string, files: File[], actor: SessionUser) {
+/** Checks the ticket exists and returns the blob prefix its uploads must use. */
+export async function attachmentUploadPrefix(rawId: string) {
+  if (!blobStorageEnabled()) throw badRequest("File storage isn't configured; attach files to the reply directly");
+  return ticketBlobPrefix((await ticketRecord(rawId)).id);
+}
+
+/**
+ * `files` are posted inline (database storage); `uploads` reference files the
+ * browser already put in blob storage. Either way sizes are checked here.
+ */
+export async function addReply(rawId: string, body: string, files: File[], uploads: BlobUpload[], actor: SessionUser) {
   const ticket = await ticketRecord(rawId);
+  const limits = attachmentLimits();
   const text = body.trim();
-  if (!text && files.length === 0) throw invalid({ body: "Write a reply or attach a file" });
-  if (files.length > ATTACHMENT_LIMITS.maxFiles) throw badRequest(`Attach at most ${ATTACHMENT_LIMITS.maxFiles} files`);
-  const tooBig = files.find((f) => f.size > ATTACHMENT_LIMITS.maxBytes);
-  if (tooBig) throw badRequest(`${tooBig.name} is larger than ${ATTACHMENT_LIMITS.maxBytes / 1024 / 1024} MB`);
-  if (files.reduce((sum, f) => sum + f.size, 0) > ATTACHMENT_LIMITS.maxTotalBytes) {
-    throw badRequest(`Attachments can total at most ${ATTACHMENT_LIMITS.maxTotalBytes / 1024 / 1024} MB per reply`);
+  if (!text && files.length === 0 && uploads.length === 0) throw invalid({ body: "Write a reply or attach a file" });
+  if (limits.storage === "database" && uploads.length) throw badRequest("File storage isn't configured");
+  if (limits.storage === "blob" && files.length) throw badRequest("Upload files to storage before sending the reply");
+
+  const prefix = ticketBlobPrefix(ticket.id);
+  const stored = await Promise.all(
+    uploads.map(async (upload) => {
+      const meta = upload.pathname.startsWith(prefix) ? await blobMetadata(upload.pathname) : null;
+      if (!meta) throw badRequest(`${upload.name} wasn't uploaded — try attaching it again`);
+      return { ...upload, ...meta };
+    }),
+  );
+
+  const sized = [...files.map((f) => ({ name: f.name, size: f.size })), ...stored];
+  if (sized.length > limits.maxFiles) throw badRequest(`Attach at most ${limits.maxFiles} files`);
+  const tooBig = sized.find((f) => f.size > limits.maxBytes);
+  if (tooBig) throw badRequest(`${tooBig.name} is larger than ${limits.maxBytes / 1024 / 1024} MB`);
+  if (sized.reduce((sum, f) => sum + f.size, 0) > limits.maxTotalBytes) {
+    throw badRequest(`Attachments can total at most ${limits.maxTotalBytes / 1024 / 1024} MB per reply`);
   }
 
   const now = new Date();
@@ -292,9 +324,9 @@ export async function addReply(rawId: string, body: string, files: File[], actor
     .values({ ticketId: ticket.id, isStaff: true, authorStaffId: actor.id, authorName: actor.name, body: text, createdAt: now })
     .returning({ id: messages.id });
 
-  if (files.length) {
-    await db.insert(attachments).values(
-      await Promise.all(
+  if (files.length || stored.length) {
+    await db.insert(attachments).values([
+      ...(await Promise.all(
         files.map(async (file) => ({
           messageId: message.id,
           name: file.name.slice(0, 255),
@@ -302,8 +334,15 @@ export async function addReply(rawId: string, body: string, files: File[], actor
           type: file.type || "application/octet-stream",
           data: Buffer.from(await file.arrayBuffer()),
         })),
-      ),
-    );
+      )),
+      ...stored.map((file) => ({
+        messageId: message.id,
+        name: file.name.slice(0, 255),
+        size: file.size,
+        type: file.type || "application/octet-stream",
+        blobPathname: file.pathname,
+      })),
+    ]);
   }
 
   await db

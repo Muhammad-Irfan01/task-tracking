@@ -2,14 +2,14 @@
 
 import { FileText, MessageSquareText, Paperclip, Send, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { Avatar, Button, Card, Select, Textarea } from "@/components/ui";
 import { useCollection } from "@/hooks/useCollection";
 import { formatBytes } from "@/lib/format";
 import { ATTACHMENT_LIMITS } from "@/lib/schemas";
 import { cn, timeAgo } from "@/lib/utils";
-import { errorMessage } from "@/services";
+import { errorMessage, ticketsService } from "@/services";
 import { toast, useCannedResponsesStore, useTicketsStore } from "@/store";
 import type { Attachment, Ticket, TicketMessage } from "@/types";
 
@@ -48,21 +48,35 @@ export function TicketConversation({ ticket, messages }: TicketConversationProps
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
+  // Database limits are the safe default until the server says blob storage is on.
+  const [limits, setLimits] = useState(ATTACHMENT_LIMITS.database);
+
+  useEffect(() => {
+    let active = true;
+    ticketsService
+      .attachmentLimits(ticket.id)
+      .then((next) => active && setLimits(next))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [ticket.id]);
 
   const templates = canned.items.filter((r) => r.enabled);
 
   function addFiles(list: FileList | File[]) {
     const incoming = Array.from(list);
-    const limitMb = ATTACHMENT_LIMITS.maxTotalBytes / 1024 / 1024;
+    const mb = (bytes: number) => bytes / 1024 / 1024;
     const next = [...files];
     const rejected: string[] = [];
     for (const file of incoming) {
       const total = next.reduce((sum, f) => sum + f.size, 0) + file.size;
-      if (next.length >= ATTACHMENT_LIMITS.maxFiles || total > ATTACHMENT_LIMITS.maxTotalBytes) rejected.push(file.name);
+      if (next.length >= limits.maxFiles || file.size > limits.maxBytes || total > limits.maxTotalBytes) rejected.push(file.name);
       else next.push(file);
     }
     if (rejected.length) {
-      toast.error(`${rejected.join(", ")} not added — up to ${ATTACHMENT_LIMITS.maxFiles} files and ${limitMb} MB per reply`);
+      const perFile = limits.maxBytes < limits.maxTotalBytes ? `, ${mb(limits.maxBytes)} MB each` : "";
+      toast.error(`${rejected.join(", ")} not added — up to ${limits.maxFiles} files and ${mb(limits.maxTotalBytes)} MB per reply${perFile}`);
     }
     setFiles(next);
   }
@@ -84,7 +98,7 @@ export function TicketConversation({ ticket, messages }: TicketConversationProps
     if (!draft.trim() && files.length === 0) return;
     setSending(true);
     try {
-      await reply(ticket.id, draft, files);
+      await reply(ticket.id, draft, files, limits.storage);
       toast.success(`Reply sent to ${ticket.customer}`);
       setDraft("");
       setFiles([]);
@@ -170,7 +184,7 @@ export function TicketConversation({ ticket, messages }: TicketConversationProps
         </div>
         <Textarea
           id="reply"
-          placeholder="Type your response… (Ctrl+Enter to send, drop files to attach — up to 4 MB)"
+          placeholder={`Type your response… (Ctrl+Enter to send, drop files to attach — up to ${limits.maxBytes / 1024 / 1024} MB)`}
           value={draft}
           rows={5}
           onChange={(e) => setDraft(e.target.value)}

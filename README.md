@@ -39,8 +39,11 @@ PGlite is single-process: stop `npm run dev` before running `db:*` commands agai
 4. Deploy. The build runs migrations and seeds demo data on the first deploy (set `SKIP_SEED=1` to start empty).
 
 Notes: enable Neon's *preview branches* in the integration so preview deployments get their own database copy
-instead of migrating production. Vercel caps request bodies at 4.5 MB, so reply attachments are limited to 4 MB
-total and stored in Postgres (`bytea`) — move them to Vercel Blob or S3 if you need bigger files. To work against
+instead of migrating production. For real email, add a [Resend](https://resend.com) API key and verified sender
+(`RESEND_API_KEY`, `MAIL_FROM`). For bigger attachments, add a **Blob** store (Storage → Blob, private access) —
+Vercel sets `BLOB_READ_WRITE_TOKEN` and replies switch to direct browser uploads (25 MB per file, 100 MB per reply).
+Without it, attachments are stored in Postgres (`bytea`) and capped at 4 MB per reply by Vercel's 4.5 MB request
+body limit. Existing attachments keep working either way. To work against
 the Neon database locally: `vercel env pull .env.local`.
 
 **Sign in** with any seeded agent email and the demo password `threadline`
@@ -53,6 +56,8 @@ Copy `.env.example` to `.env.local` to configure these locally.
 | --- | --- |
 | `SESSION_SECRET` | HMAC key for session cookies — **required in production** |
 | `APP_URL` | Base URL used in emailed links (e.g. `https://desk.example.com`). Links never use the request Host header, which prevents reset-link poisoning |
+| `RESEND_API_KEY`, `MAIL_FROM` | Send password-reset and invite emails through Resend. `MAIL_FROM` must use a domain verified in Resend (e.g. `Threadline <support@desk.example.com>`). Unset: emails are only written to the server log |
+| `BLOB_READ_WRITE_TOKEN` | Private Vercel Blob store for reply attachments (set automatically when you connect a Blob store). Unset: attachments go in Postgres, 4 MB per reply |
 | `SIGNUP_ALLOWED_DOMAINS` | Optional comma-separated list (e.g. `threadline.io`) restricting self-service sign-up |
 
 ## What's live
@@ -62,8 +67,9 @@ Copy `.env.example` to `.env.local` to configure these locally.
   new one revokes the old. The forgot-password response is identical whether or not the email exists. A successful
   reset signs out all other sessions and signs the user in. Agents created by an admin get an **invite** email
   (72-hour link) to set their first password. Login, sign-up, forgot and reset are rate-limited.
-  No email provider is configured: `src/server/mail.ts` prints messages to the server log (and in
-  `npm run dev` the forgot-password screen shows the link directly) — replace it with Resend/SES/Postmark to send for real.
+  Email goes through Resend when `RESEND_API_KEY` and `MAIL_FROM` are set; otherwise `src/server/mail.ts` prints
+  messages to the server log (and in `npm run dev` the forgot-password screen shows the link directly). If an
+  invite can't be sent, the admin is told so instead of seeing a false "emailed" confirmation.
 - **Auth** — signed, httpOnly session cookie; `src/proxy.ts` gates every page and API route, the dashboard
   layout verifies the session server-side (so every page renders dynamically per request). Changing your
   password signs out your other sessions. Admin-only: managing agents and workspace settings.
@@ -73,7 +79,7 @@ Copy `.env.example` to `.env.local` to configure these locally.
   orphan data are refused with an explanation. Names are unique case-insensitively.
 - **Tickets** — create (auto-assigned to the least-loaded available agent in the department, SLA due time
   from the help topic's plan), reassign / re-route / change status & priority, replies with file
-  attachments (≤5 files, 4 MB per reply), canned-response insertion, delete. Filters are shareable via URL
+  attachments (≤5 files; 4 MB per reply in Postgres, or 25 MB per file / 100 MB per reply with Vercel Blob), canned-response insertion, delete. Filters are shareable via URL
   (`/tickets?overdue=1`, `?assignee=…`, `?department=…`, `?status=…`).
 - **Computed data** — every count, SLA breach, and dashboard/report metric (volume, first response,
   resolution time, first-contact resolution, CSAT, leaderboard) is calculated from ticket data for the

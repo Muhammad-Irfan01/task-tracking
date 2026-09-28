@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
@@ -249,10 +250,16 @@ export const attachments = pgTable(
     name: text("name").notNull(),
     size: integer("size").notNull(),
     type: text("type").notNull(),
-    data: bytea("data").notNull(),
+    /** Inline file contents; null when the file lives in Vercel Blob. */
+    data: bytea("data"),
+    /** Private Vercel Blob pathname when blob storage is configured. */
+    blobPathname: text("blob_pathname"),
     createdAt: createdAt(),
   },
-  (t) => [index("attachments_message_idx").on(t.messageId)],
+  (t) => [
+    index("attachments_message_idx").on(t.messageId),
+    check("attachments_storage_check", sql`${t.data} is not null or ${t.blobPathname} is not null`),
+  ],
 );
 
 export const notifications = pgTable(

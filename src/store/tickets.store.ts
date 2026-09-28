@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { TicketCreateInput, TicketUpdateInput } from "@/lib/schemas";
+import type { AttachmentStorage, TicketCreateInput, TicketUpdateInput } from "@/lib/schemas";
 import { errorMessage, ticketsService } from "@/services";
 import type { AsyncStatus, Ticket, TicketMessage, TicketPriority, TicketStatus } from "@/types";
 import type { CollectionState } from "./create-collection-store";
@@ -33,7 +33,7 @@ interface TicketsState extends CollectionState<Ticket> {
   createTicket: (input: TicketCreateInput) => Promise<Ticket>;
   updateTicket: (id: number, changes: TicketUpdateInput) => Promise<Ticket>;
   deleteTicket: (id: number) => Promise<void>;
-  reply: (id: number, body: string, files?: File[]) => Promise<TicketMessage>;
+  reply: (id: number, body: string, files?: File[], storage?: AttachmentStorage) => Promise<TicketMessage>;
 }
 
 export const DEFAULT_TICKET_FILTERS: TicketFilters = {
@@ -116,8 +116,11 @@ export const useTicketsStore = create<TicketsState>()((set, get) => ({
     refreshLoadedStores("tickets");
   },
 
-  reply: async (id, body, files = []) => {
-    const { message, ticket } = await ticketsService.reply(id, body, files);
+  reply: async (id, body, files = [], storage = "database") => {
+    const { message, ticket } =
+      storage === "blob"
+        ? await ticketsService.reply(id, body, [], await Promise.all(files.map((f) => ticketsService.uploadAttachment(id, f))))
+        : await ticketsService.reply(id, body, files);
     const key = String(id);
     set((state) => {
       const detail = state.details[key] ?? { ...EMPTY_DETAIL, status: "success" as const };

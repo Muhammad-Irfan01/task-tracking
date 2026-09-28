@@ -195,12 +195,33 @@ export function toFieldErrors(error: z.ZodError): FieldErrors {
   return errors;
 }
 
+export type AttachmentStorage = "database" | "blob";
+
+export interface AttachmentLimits {
+  storage: AttachmentStorage;
+  maxFiles: number;
+  maxBytes: number;
+  maxTotalBytes: number;
+}
+
+const MB = 1024 * 1024;
+
 /**
- * Vercel functions accept request bodies up to 4.5 MB, so a whole reply
- * (all files plus form overhead) must stay under that.
+ * `database`: files are posted with the reply and stored in Postgres. Vercel
+ * functions accept request bodies up to 4.5 MB, so a whole reply (all files
+ * plus form overhead) must stay under that.
+ *
+ * `blob`: the browser uploads straight to private Vercel Blob storage and the
+ * reply only carries references, so the function body limit doesn't apply.
  */
-export const ATTACHMENT_LIMITS = {
-  maxFiles: 5,
-  maxBytes: 4 * 1024 * 1024,
-  maxTotalBytes: 4 * 1024 * 1024,
-} as const;
+export const ATTACHMENT_LIMITS: Record<AttachmentStorage, AttachmentLimits> = {
+  database: { storage: "database", maxFiles: 5, maxBytes: 4 * MB, maxTotalBytes: 4 * MB },
+  blob: { storage: "blob", maxFiles: 5, maxBytes: 25 * MB, maxTotalBytes: 100 * MB },
+};
+
+/** Files already uploaded to blob storage, referenced from a reply. */
+export const blobUploadsSchema = z
+  .array(z.object({ pathname: z.string().min(1).max(1024), name: z.string().min(1).max(255) }))
+  .max(ATTACHMENT_LIMITS.blob.maxFiles);
+
+export type BlobUpload = z.infer<typeof blobUploadsSchema>[number];

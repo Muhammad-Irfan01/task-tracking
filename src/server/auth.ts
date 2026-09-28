@@ -258,10 +258,10 @@ export async function resetPassword(raw: unknown, ip: string) {
 export async function sendInvite(staffId: number, invitedBy: SessionUser, origin: string) {
   const row = (await findStaff(eq(staff.id, staffId)))!;
   const url = `${appUrl(origin)}/reset-password?token=${await issueResetToken(row.id, "invite")}`;
-  await sendMail({
+  const inviteEmailed = await sendMail({
     to: row.email,
     subject: `${invitedBy.name} invited you to Threadline`,
     text: `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} added you to the Threadline support desk. Set your password to get started (link valid for 72 hours):\n\n${url}`,
   });
-  return process.env.NODE_ENV === "production" ? {} : { devInviteUrl: url };
+  return process.env.NODE_ENV === "production" ? { inviteEmailed } : { inviteEmailed, devInviteUrl: url };
 }

@@ -22,9 +22,14 @@ export function AgentFormModal({ open, entity, onClose }: EntityFormProps<Agent>
   });
 
   const onSubmit = form.handleSubmit(async (input) => {
-    if (entity) await update(entity.id, input);
-    else await create(input);
-    toast.success(entity ? "Agent updated" : `${input.name} added — an invite to set their password was emailed to ${input.email}`);
+    if (entity) {
+      await update(entity.id, input);
+      toast.success("Agent updated");
+    } else {
+      const agent = (await create(input)) as Agent & { inviteEmailed?: boolean };
+      if (agent.inviteEmailed) toast.success(`${input.name} added — an invite to set their password was emailed to ${input.email}`);
+      else toast.info(`${input.name} added, but the invite email couldn't be sent — the setup link is in the server log`);
+    }
     onClose();
   });
 

@@ -23,17 +23,32 @@ import { hashPassword, verifyPassword } from "./passwords";
 import { MINUTE, rateLimit } from "./rate-limit";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
-const SECRET = process.env.SESSION_SECRET ?? "threadline-dev-secret-change-me";
+// A blank value counts as unset: an empty HMAC key is as forgeable as a public one.
+const CONFIGURED_SECRET = process.env.SESSION_SECRET?.trim() || null;
+const DEV_SECRET = "threadline-dev-secret-change-me";
 
-if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+if (process.env.NODE_ENV === "production" && !CONFIGURED_SECRET) {
   console.warn("[auth] SESSION_SECRET is not set; using an insecure development secret.");
+}
+
+/**
+ * On Vercel, refuse to sign or check sessions without a real secret rather
+ * than fall back to the public development one (which would let anyone who
+ * has read the source forge a login). Checked lazily so builds still succeed.
+ */
+function sessionSecret() {
+  if (CONFIGURED_SECRET) return CONFIGURED_SECRET;
+  if (process.env.VERCEL) {
+    throw new Error("SESSION_SECRET is missing or empty. Set it in Vercel → Settings → Environment Variables and redeploy.");
+  }
+  return DEV_SECRET;
 }
 
 // ------------------------------------------------------------------ tokens
 
 /** Binding the signature to the password salt logs out other sessions on password change. */
 function sign(staffId: number, issuedAt: number, salt: string | null) {
-  return createHmac("sha256", SECRET).update(`${staffId}.${issuedAt}.${salt ?? ""}`).digest("base64url");
+  return createHmac("sha256", sessionSecret()).update(`${staffId}.${issuedAt}.${salt ?? ""}`).digest("base64url");
 }
 
 function parseToken(token: string | undefined) {

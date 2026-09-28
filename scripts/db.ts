@@ -5,6 +5,8 @@
  *   tsx scripts/db.ts seed      load demo data (skipped if data exists; --force to wipe first)
  *   tsx scripts/db.ts setup     migrate, then seed only if the database is empty (used by dev/build)
  *   tsx scripts/db.ts reset     drop everything, migrate, seed fresh demo data
+ *   tsx scripts/db.ts clean     delete ALL data, keep only the essentials + the admin from ADMIN_EMAIL/ADMIN_PASSWORD
+ *                               (if unset, the next production build's `setup` creates it)
  */
 import { loadEnvConfig } from "@next/env";
 import { sql } from "drizzle-orm";
@@ -18,6 +20,7 @@ import { cannedResponses, faqArticles, faqCategories } from "../src/server/db/se
 import { departments, helpTopics, organizations, slaPlans, staff, teams } from "../src/server/db/seed/directory";
 import { buildCustomers, buildTickets } from "../src/server/db/seed/people";
 import { DEMO_PASSWORD, DEMO_SALT, hashPassword } from "../src/server/passwords";
+import { newPassword } from "../src/lib/schemas";
 
 // Read .env / .env.local exactly like `next dev` / `next build`, so scripts and
 // the app always target the same database.
@@ -52,6 +55,60 @@ const TABLES_BY_DEPENDENCY = [
 async function wipe() {
   await db.execute(sql.raw(`TRUNCATE ${TABLES_BY_DEPENDENCY.map((n) => `"${n}"`).join(", ")} RESTART IDENTITY CASCADE`));
 }
+
+/** Admin account for a clean database, from ADMIN_NAME / ADMIN_EMAIL / ADMIN_PASSWORD. */
+function adminFromEnv() {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email || !password) return null;
+  const policy = newPassword.safeParse(password);
+  if (!policy.success) throw new Error(`ADMIN_PASSWORD: ${policy.error.issues[0].message}`);
+  return { name: process.env.ADMIN_NAME?.trim() || "Administrator", email, password };
+}
+
+/**
+ * The minimum a real (non-demo) workspace needs: settings, a department so
+ * people can sign up, an SLA plan + help topic so tickets can be created, the
+ * catch-all organization for new customers, and an admin. Safe to re-run.
+ */
+async function bootstrap(database: Database) {
+  const admin = adminFromEnv();
+  await database
+    .insert(t.orgSettings)
+    .values({ id: 1, name: "Support Desk", supportEmail: admin?.email ?? "support@example.com", timezone: "Asia/Karachi (UTC+05:00)" })
+    .onConflictDoNothing();
+  await database.insert(t.organizations).values({ name: "Independent Customers", domain: "—" }).onConflictDoNothing();
+  await database.insert(t.departments).values({ name: "General Support", isPublic: true }).onConflictDoNothing();
+  await database.insert(t.slaPlans).values({ name: "Standard SLA", graceHours: 48, notes: "Default response window." }).onConflictDoNothing();
+
+  const [dept] = await database.select({ id: t.departments.id }).from(t.departments).orderBy(t.departments.id).limit(1);
+  const [plan] = await database.select({ id: t.slaPlans.id }).from(t.slaPlans).orderBy(t.slaPlans.id).limit(1);
+  await database.insert(t.helpTopics).values({ name: "General Enquiry", departmentId: dept.id, slaPlanId: plan.id }).onConflictDoNothing();
+
+  if (!admin) {
+    log("no ADMIN_EMAIL / ADMIN_PASSWORD set — no admin created (the first sign-up will be a regular agent)");
+    return;
+  }
+  const credential = hashPassword(admin.password);
+  const [row] = await database
+    .insert(t.staff)
+    .values({
+      name: admin.name,
+      email: admin.email,
+      departmentId: dept.id,
+      role: "Department Manager",
+      isAdmin: true,
+      passwordHash: credential.hash,
+      passwordSalt: credential.salt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: t.staff.id });
+  if (row) await database.update(t.departments).set({ managerId: row.id }).where(sql`${t.departments.id} = ${dept.id}`);
+  log(row ? `created admin ${admin.email}` : `admin ${admin.email} already exists`);
+}
+
+/** Vercel production starts clean unless SEED_DEMO=1; everywhere else gets demo data. */
+const wantsDemoData = () => process.env.SEED_DEMO === "1" || process.env.VERCEL_ENV !== "production";
 
 async function seed(database: Database) {
   const orgs = organizations();
@@ -184,8 +241,9 @@ async function main() {
     case "setup":
       await migrate();
       if (process.env.SKIP_SEED === "1") return log("SKIP_SEED=1 — not seeding");
-      if (await isEmpty()) await seed(db);
-      else log("database already has data — skipping seed");
+      if (!(await isEmpty())) log("database already has data — skipping seed");
+      else if (wantsDemoData()) await seed(db);
+      else await bootstrap(db);
       break;
     case "reset":
       // One statement per call: prepared statements (PGlite, Neon HTTP) reject multi-statement strings.
@@ -195,8 +253,17 @@ async function main() {
       await migrate();
       await seed(db);
       break;
+    case "clean":
+      if (!force) throw new Error("This deletes every ticket, customer and agent. Re-run with --force to confirm.");
+      await migrate();
+      await wipe();
+      await bootstrap(db);
+      // Without ADMIN_* here (e.g. they're Vercel secrets), no staff exist yet, so the
+      // next production build's `setup` sees an empty database and creates the admin.
+      log(adminFromEnv() ? "database cleaned — sign in with ADMIN_EMAIL / ADMIN_PASSWORD" : "database cleaned — redeploy on Vercel to create the admin from ADMIN_EMAIL / ADMIN_PASSWORD");
+      break;
     default:
-      console.error("Usage: tsx scripts/db.ts <migrate|seed|setup|reset> [--force]");
+      console.error("Usage: tsx scripts/db.ts <migrate|seed|setup|reset|clean> [--force]");
       process.exitCode = 1;
   }
 }

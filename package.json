@@ -13,6 +13,7 @@
     "db:seed": "tsx scripts/db.ts seed",
     "db:setup": "tsx scripts/db.ts setup",
     "db:reset": "tsx scripts/db.ts reset",
+    "db:clean": "tsx scripts/db.ts clean",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

@@ -24,6 +24,7 @@ Postgres via [Drizzle ORM](https://orm.drizzle.team). Two drivers, same schema a
 | `npm run db:setup` | Apply migrations; load demo data only if the database is empty (runs automatically before `dev` and `build`) |
 | `npm run db:reset` | Drop everything, re-migrate, reseed fresh demo data (demo timestamps are relative to seed time) |
 | `npm run db:seed -- --force` | Replace all data with fresh demo data |
+| `npm run db:clean -- --force` | **Delete all data** (demo or real) and keep only the essentials plus one admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD` |
 | `npm run db:generate` | After editing `src/server/db/schema.ts`, write a new SQL migration into `./drizzle` (commit it) |
 | `npm run db:studio` | Browse the data in Drizzle Studio |
 
@@ -36,7 +37,16 @@ PGlite is single-process: stop `npm run dev` before running `db:*` commands agai
    This sets `DATABASE_URL` for Production, Preview and Development.
 3. Under **Settings → Environment Variables** add `SESSION_SECRET` (`openssl rand -base64 32`) and,
    optionally, `APP_URL`.
-4. Deploy. The build runs migrations and seeds demo data on the first deploy (set `SKIP_SEED=1` to start empty).
+4. Also add `ADMIN_EMAIL`, `ADMIN_PASSWORD` (8+ characters, a letter and a number) and optionally `ADMIN_NAME`.
+5. Deploy. The build runs migrations. On an empty **production** database it creates only the essentials — one
+   department, SLA plan and help topic, plus your admin — never demo data (set `SEED_DEMO=1` if you want the demo).
+   Preview deployments and local dev still get demo data.
+
+**Already deployed with demo data?** The demo accounts share the public password `threadline`, so clear them:
+copy the database connection string (Vercel → Storage → your Neon database → `.env.local` tab) into your local
+`.env.local` as `DATABASE_URL=…`, then run `npm run db:clean -- --force` and **redeploy** — the build sees the
+empty database and creates your admin from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` set in Vercel. **Remove `DATABASE_URL` from `.env.local` afterwards** — while it's there,
+`npm run dev` works against the production database.
 
 Notes: enable Neon's *preview branches* in the integration so preview deployments get their own database copy
 instead of migrating production. For real email, add a [Resend](https://resend.com) API key and verified sender
@@ -58,6 +68,8 @@ Copy `.env.example` to `.env.local` to configure these locally.
 | `APP_URL` | Base URL used in emailed links (e.g. `https://desk.example.com`). Links never use the request Host header, which prevents reset-link poisoning |
 | `RESEND_API_KEY`, `MAIL_FROM` | Send password-reset and invite emails through Resend. `MAIL_FROM` must use a domain verified in Resend (e.g. `Threadline <support@desk.example.com>`). Unset: emails are only written to the server log |
 | `BLOB_READ_WRITE_TOKEN` | Private Vercel Blob store for reply attachments (set automatically when you connect a Blob store). Unset: attachments go in Postgres, 4 MB per reply |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | First admin account, created when a production database is set up empty or by `db:clean` |
+| `SEED_DEMO` | Set to `1` to load demo data into an empty production database |
 | `SIGNUP_ALLOWED_DOMAINS` | Optional comma-separated list (e.g. `threadline.io`) restricting self-service sign-up |
 
 ## What's live

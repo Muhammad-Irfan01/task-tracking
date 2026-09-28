@@ -1,26 +1,150 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  --color-brand-50: #eef0ff;
+  --color-brand-100: #e0e3ff;
+  --color-brand-200: #c7ccff;
+  --color-brand-300: #a5aeff;
+  --color-brand-400: #7c86f0;
+  --color-brand-500: #4f46e5;
+  --color-brand-600: #4038c4;
+  --color-brand-700: #332da0;
+  --color-brand-800: #28247d;
+  --color-brand-900: #1e1b5c;
+
+  --color-ink-500: #3a4659;
+  --color-ink-600: #242f42;
+  --color-ink-700: #1a2333;
+  --color-ink-800: #111827;
+  --color-ink-900: #0b1120;
+  --color-ink-950: #080b14;
+
+  --color-paper-50: #fbfbfa;
+  --color-paper-100: #f7f7f5;
+  --color-paper-200: #ededea;
+
+  --color-amber-400: #fbbf54;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d9860a;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #0c9468;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #ef4444;
+  --color-rose-600: #dc2626;
+
+  --shadow-soft: 0 1px 2px 0 #0f172a0a, 0 1px 6px -1px #0f172a0f;
+  --shadow-card: 0 2px 8px -2px #0f172a14, 0 8px 24px -8px #0f172a1a;
+
+  --animate-pulse-ring: pulse-ring 2s infinite;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 #f59e0b73;
+    }
+    70% {
+      box-shadow: 0 0 0 8px #f59e0b00;
+    }
+    100% {
+      box-shadow: 0 0 0 0 #f59e0b00;
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: -400px 0;
+    }
+    to {
+      background-position: 400px 0;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-paper-100 text-ink-900 font-sans antialiased dark:bg-ink-950 dark:text-paper-100;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+  }
+
+  ::selection {
+    background-color: #a5aeff66;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    @apply outline-hidden ring-2 ring-brand-500 ring-offset-2 ring-offset-paper-100 dark:ring-offset-ink-950;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-900/10 dark:bg-paper-100/10;
+  }
+}
+
+/* Card / panel background shared by most surfaces. */
+@utility surface {
+  @apply border border-ink-900/[0.06] bg-white dark:border-paper-100/[0.06] dark:bg-ink-900;
+}
+
+/* Loading placeholder with a sweeping highlight. */
+@utility skeleton {
+  @apply relative overflow-hidden rounded-md bg-ink-900/[0.06] dark:bg-paper-100/[0.08];
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, #ffffff59, transparent) 0 0 / 400px 100%;
+    @apply animate-shimmer;
+  }
+
+  &:where(.dark, .dark *)::after {
+    background-image: linear-gradient(90deg, transparent, #ffffff0f, transparent);
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // PGlite ships WASM + data files; load it with Node's require instead of bundling.
+  serverExternalPackages: ["@electric-sql/pglite"],
 };
 
 export default nextConfig;

@@ -49,8 +49,9 @@ empty database and creates your admin from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` 
 `npm run dev` works against the production database.
 
 Notes: enable Neon's *preview branches* in the integration so preview deployments get their own database copy
-instead of migrating production. For real email, add a [Resend](https://resend.com) API key and verified sender
-(`RESEND_API_KEY`, `MAIL_FROM`). For bigger attachments, add a **Blob** store (Storage → Blob, private access) —
+instead of migrating production. For real email, either set `SMTP_USER` (a Gmail address) and `SMTP_PASS` (a
+[Google App Password](https://myaccount.google.com/apppasswords)) — free, no domain needed — or add a
+[Resend](https://resend.com) API key and a sender on a verified domain (`RESEND_API_KEY`, `MAIL_FROM`). For bigger attachments, add a **Blob** store (Storage → Blob, private access) —
 Vercel sets `BLOB_READ_WRITE_TOKEN` and replies switch to direct browser uploads (25 MB per file, 100 MB per reply).
 Without it, attachments are stored in Postgres (`bytea`) and capped at 4 MB per reply by Vercel's 4.5 MB request
 body limit. Existing attachments keep working either way. To work against
@@ -66,6 +67,7 @@ Copy `.env.example` to `.env.local` to configure these locally.
 | --- | --- |
 | `SESSION_SECRET` | HMAC key for session cookies — **required in production** |
 | `APP_URL` | Base URL used in emailed links (e.g. `https://desk.example.com`). Links never use the request Host header, which prevents reset-link poisoning |
+| `SMTP_USER`, `SMTP_PASS` | Send email over SMTP with Nodemailer (Gmail by default; `SMTP_PASS` is an App Password). Optional `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` for other providers. Used before Resend when set |
 | `RESEND_API_KEY`, `MAIL_FROM` | Send password-reset and invite emails through Resend. `MAIL_FROM` must use a domain verified in Resend (e.g. `Threadline <support@desk.example.com>`). Unset: emails are only written to the server log |
 | `BLOB_READ_WRITE_TOKEN` | Private Vercel Blob store for reply attachments (set automatically when you connect a Blob store). Unset: attachments go in Postgres, 4 MB per reply |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | First admin account, created when a production database is set up empty or by `db:clean` |
@@ -79,7 +81,8 @@ Copy `.env.example` to `.env.local` to configure these locally.
   new one revokes the old. The forgot-password response is identical whether or not the email exists. A successful
   reset signs out all other sessions and signs the user in. Agents created by an admin get an **invite** email
   (72-hour link) to set their first password. Login, sign-up, forgot and reset are rate-limited.
-  Email goes through Resend when `RESEND_API_KEY` and `MAIL_FROM` are set; otherwise `src/server/mail.ts` prints
+  Email goes over SMTP (Nodemailer) when `SMTP_USER` / `SMTP_PASS` are set, else through Resend when
+  `RESEND_API_KEY` / `MAIL_FROM` are set; otherwise `src/server/mail.ts` prints
   messages to the server log (and in `npm run dev` the forgot-password screen shows the link directly). If an
   invite can't be sent, the admin is told so instead of seeing a false "emailed" confirmation.
 - **Auth** — signed, httpOnly session cookie; `src/proxy.ts` gates every page and API route, the dashboard

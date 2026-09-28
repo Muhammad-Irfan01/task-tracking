@@ -1,0 +1,1 @@
+import{r as e,t}from"./classNames-CZQxpuJv.js";var n=e();function r({className:e,children:r,...i}){return(0,n.jsx)(`div`,{className:t(`surface rounded-2xl shadow-soft`,e),...i,children:r})}export{r as t};

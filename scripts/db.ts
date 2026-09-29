@@ -80,7 +80,11 @@ async function ensureSuperAdmin(database: Database, fallback?: { name: string; e
     return;
   }
   const [agent] = await database.select({ id: t.staff.id }).from(t.staff).where(eq(t.staff.email, admin.email)).limit(1);
-  if (agent) throw new Error(`SUPER_ADMIN_EMAIL ${admin.email} already belongs to an agent — use a different email`);
+  if (agent) {
+    // Warn instead of failing the build: the migrations already ran, so the new code must still deploy.
+    console.warn(`[db] WARNING: SUPER_ADMIN_EMAIL ${admin.email} already belongs to an agent — super admin NOT created. Set a different SUPER_ADMIN_EMAIL and redeploy.`);
+    return;
+  }
 
   const [existing] = await database.select().from(t.superAdmins).where(eq(t.superAdmins.email, admin.email)).limit(1);
   if (!existing) {

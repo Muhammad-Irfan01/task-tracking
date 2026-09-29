@@ -1,3 +1,5 @@
+import type { PlanId } from "@/lib/constants";
+
 export type TicketStatus =
   | "Open"
   | "In Progress"
@@ -198,8 +200,9 @@ export interface Tenant {
   supportEmail: string;
   emailDomain: string | null;
   timezone: string;
-  plan: string;
-  maxAgents: number | null;
+  plan: PlanId;
+  /** Employee limit that comes with the plan. */
+  maxAgents: number;
   status: "Active" | "Suspended";
   createdAt: string;
   agents: number;
@@ -237,8 +240,8 @@ export interface OrgSettings {
   plan: string;
   /** Computed: active agents. */
   seatsUsed: number;
-  /** Seat limit set by the platform; null means unlimited. */
-  maxAgents: number | null;
+  /** Employee limit of the plan (set by the platform). */
+  maxAgents: number;
   /** Staff email domain set by the platform; null means any. */
   emailDomain: string | null;
 }

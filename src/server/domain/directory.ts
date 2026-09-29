@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { AVATAR_COLORS } from "@/lib/constants";
+import { AVATAR_COLORS, planLimit } from "@/lib/constants";
 import {
   emailInDomain,
   agentSchema,
@@ -173,18 +173,20 @@ async function assertEmailInTenantDomain(address: string | undefined) {
   }
 }
 
-/** Enforces the organization's seat limit (set by the platform) for active agents. */
+/** Enforces the plan's employee limit (Small 75 / Medium 250 / Large 1000) for active agents. */
 async function assertSeatAvailable(activatingId?: number) {
-  const [tenant] = await db.select({ maxAgents: tenants.maxAgents }).from(tenants).where(eq(tenants.id, currentTenant()));
-  if (tenant?.maxAgents == null) return;
+  const [tenant] = await db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, currentTenant()));
+  const limit = planLimit(tenant.plan);
   const active = await count(
     db
       .select({ n: countSql })
       .from(staff)
       .where(and(inTenant(staff.tenantId), eq(staff.active, true), activatingId ? sql`${staff.id} <> ${activatingId}` : undefined)),
   );
-  if (active >= tenant.maxAgents) {
-    throw conflict(`Your plan allows ${plural(tenant.maxAgents, "active agent")}. Deactivate someone or ask your provider for more seats.`);
+  if (active >= limit) {
+    throw conflict(
+      `Your ${tenant.plan} plan allows up to ${plural(limit, "active employee")}. Deactivate someone or ask your provider to upgrade the plan.`,
+    );
   }
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PLAN_IDS } from "./constants";
 
 /**
  * Validation schemas shared by forms (client) and route handlers (server),
@@ -155,15 +156,6 @@ export const orgSettingsSchema = z.object({
 
 export const TENANT_STATUS_VALUES = ["Active", "Suspended"] as const;
 
-/** Blank means unlimited; forms send NaN for an empty number field. */
-const seatLimit = z
-  .number("Enter a number of seats")
-  .int("Use a whole number")
-  .min(1, "At least 1 seat")
-  .max(10_000, "At most 10,000 seats")
-  .nullable()
-  .or(z.nan().transform(() => null));
-
 /** Free email providers can't be claimed by one organization — everyone uses them. */
 export const PUBLIC_EMAIL_DOMAINS = [
   "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "outlook.com", "hotmail.com", "live.com", "msn.com",
@@ -198,8 +190,7 @@ export const tenantSchema = z.object({
   supportEmail: email,
   emailDomain,
   timezone: required("Time zone"),
-  plan: required("Plan", 60),
-  maxAgents: seatLimit,
+  plan: z.enum(PLAN_IDS, "Choose a plan"),
   status: z.enum(TENANT_STATUS_VALUES),
 });
 

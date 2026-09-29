@@ -3,10 +3,10 @@
 import { Building2, Plus, Ticket, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, EmptyState, ErrorState, FormModal, Input, Modal, PageHeader, RowSkeleton, SearchInput, StatCard, Table, Td, Tr } from "@/components/ui";
+import { Button, Card, EmptyState, ErrorState, FormModal, Input, Modal, PageHeader, RowSkeleton, SearchInput, Select, StatCard, Table, Td, Tr } from "@/components/ui";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useZodForm } from "@/hooks/useZodForm";
-import { PLAN_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/constants";
+import { PLAN_IDS, planLabel, TIMEZONE_OPTIONS, type PlanId } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { tenantCreateSchema } from "@/lib/schemas";
 import { errorMessage, platformService, type InviteResult } from "@/services";
@@ -97,7 +97,7 @@ export function TenantsView() {
           />
         )}
         {tenants && tenants.length > 0 && (
-          <Table columns={["Organization", "Domain", "Plan", "Seats", "Tickets", "Status", "Created"]}>
+          <Table columns={["Organization", "Domain", "Plan", "Employees", "Tickets", "Status", "Created"]}>
             {filtered.map((t) => (
               <Tr key={t.id}>
                 <Td>
@@ -109,8 +109,7 @@ export function TenantsView() {
                 <Td muted>{t.emailDomain ? `@${t.emailDomain}` : "Any"}</Td>
                 <Td muted>{t.plan}</Td>
                 <Td muted>
-                  {t.agents}
-                  {t.maxAgents === null ? "" : ` / ${t.maxAgents}`}
+                  {t.agents} / {t.maxAgents}
                 </Td>
                 <Td muted>
                   {t.openTickets} open · {t.totalTickets} total
@@ -155,8 +154,7 @@ function CreateTenantModal({
     supportEmail: "",
     emailDomain: "",
     timezone: "UTC (UTC+00:00)",
-    plan: "Business",
-    maxAgents: Number.NaN,
+    plan: "Small" as PlanId,
     adminName: "",
     adminEmail: "",
   };
@@ -188,22 +186,15 @@ function CreateTenantModal({
           hint="Every admin and agent must use an @this-domain email."
           {...form.field("emailDomain")}
         />
-        <Input label="Plan" list="plan-options" {...form.field("plan")} />
-        <Input
-          label="Seat limit"
-          type="number"
-          min={1}
-          placeholder="Unlimited"
-          hint="Maximum active agents. Leave blank for unlimited."
-          {...form.field("maxAgents", { numeric: true })}
-        />
+        <Select label="Plan" {...form.field("plan")}>
+          {PLAN_IDS.map((p) => (
+            <option key={p} value={p}>
+              {planLabel(p)}
+            </option>
+          ))}
+        </Select>
       </div>
       <Input label="Time zone" list="timezone-options" {...form.field("timezone")} />
-      <datalist id="plan-options">
-        {PLAN_OPTIONS.map((p) => (
-          <option key={p} value={p} />
-        ))}
-      </datalist>
       <datalist id="timezone-options">
         {TIMEZONE_OPTIONS.map((tz) => (
           <option key={tz} value={tz} />

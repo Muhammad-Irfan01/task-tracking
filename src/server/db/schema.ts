@@ -53,9 +53,8 @@ export const tenants = pgTable(
      */
     emailDomain: text("email_domain"),
     timezone: text("timezone").notNull().default("UTC (UTC+00:00)"),
-    plan: text("plan").notNull().default("Business"),
-    /** Maximum active agents; null means unlimited. */
-    maxAgents: integer("max_agents"),
+    /** Small / Medium / Large — sets the employee limit (see PLANS in lib/constants). */
+    plan: text("plan", { enum: ["Small", "Medium", "Large"] }).notNull().default("Small"),
     status: text("status", { enum: ["Active", "Suspended"] }).notNull().default("Active"),
     createdAt: createdAt(),
   },

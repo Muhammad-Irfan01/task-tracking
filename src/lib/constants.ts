@@ -67,8 +67,22 @@ export const TIMEZONE_OPTIONS = [
   "America/New_York (UTC-05:00)",
 ];
 
-/** Suggestions for the plan field in the platform console. */
-export const PLAN_OPTIONS = ["Starter", "Business", "Enterprise"];
+/** Subscription plans; the plan alone sets how many active employees (admins + staff) an organization may have. */
+export const PLANS = [
+  { id: "Small", maxAgents: 75 },
+  { id: "Medium", maxAgents: 250 },
+  { id: "Large", maxAgents: 1000 },
+] as const;
+
+export type PlanId = (typeof PLANS)[number]["id"];
+
+export const PLAN_IDS = PLANS.map((p) => p.id) as [PlanId, ...PlanId[]];
+
+export function planLimit(plan: string) {
+  return PLANS.find((p) => p.id === plan)?.maxAgents ?? PLANS[0].maxAgents;
+}
+
+export const planLabel = (plan: PlanId) => `${plan} — up to ${planLimit(plan).toLocaleString("en-US")} employees`;
 
 export const THEME_STORAGE_KEY = "threadline-theme";
 

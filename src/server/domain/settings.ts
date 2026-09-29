@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { planLimit } from "@/lib/constants";
 import { orgSettingsSchema, toFieldErrors } from "@/lib/schemas";
 import type { OrgSettings } from "@/types";
 import { db } from "../db";
@@ -8,7 +9,7 @@ import { invalid } from "../errors";
 import { currentTenant, inTenant } from "../tenant";
 import { count, countSql } from "./shared";
 
-/** The signed-in agent's organization. Plan and seat limit are set by the platform, not here. */
+/** The signed-in agent's organization. The plan (and so the employee limit) is set by the platform, not here. */
 export async function getOrgSettings(): Promise<OrgSettings> {
   const [row] = await db.select().from(tenants).where(eq(tenants.id, currentTenant()));
   const seatsUsed = await count(db.select({ n: countSql }).from(staff).where(and(inTenant(staff.tenantId), eq(staff.active, true))));
@@ -17,7 +18,7 @@ export async function getOrgSettings(): Promise<OrgSettings> {
     supportEmail: row.supportEmail,
     timezone: row.timezone,
     plan: row.plan,
-    maxAgents: row.maxAgents,
+    maxAgents: planLimit(row.plan),
     emailDomain: row.emailDomain,
     seatsUsed,
   };

@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
+import { planLimit } from "@/lib/constants";
 import { emailInDomain, tenantAdminSchema, tenantCreateSchema, tenantSchema, toFieldErrors } from "@/lib/schemas";
 import type { Tenant, TenantDetail, TenantMember } from "@/types";
 import { db } from "../db";
@@ -26,7 +27,6 @@ async function tenantRows(where?: SQL): Promise<Tenant[]> {
       emailDomain: t.tenants.emailDomain,
       timezone: t.tenants.timezone,
       plan: t.tenants.plan,
-      maxAgents: t.tenants.maxAgents,
       status: t.tenants.status,
       createdAt: t.tenants.createdAt,
       agents: staffCount(sql`${q(t.staff.active)}`),
@@ -37,7 +37,7 @@ async function tenantRows(where?: SQL): Promise<Tenant[]> {
     .from(t.tenants)
     .where(where)
     .orderBy(desc(t.tenants.createdAt), desc(t.tenants.id));
-  return rows.map((row) => ({ ...row, createdAt: isoRequired(row.createdAt) }));
+  return rows.map((row) => ({ ...row, maxAgents: planLimit(row.plan), createdAt: isoRequired(row.createdAt) }));
 }
 
 export const listTenants = () => tenantRows();
@@ -137,6 +137,12 @@ export async function updateTenant(rawId: string, raw: unknown) {
         emailDomain: `${outside.length} ${outside.length === 1 ? "person uses" : "people use"} another domain (${sample}${outside.length > 3 ? ", …" : ""}). Change their emails first.`,
       });
     }
+  }
+  const plan = parsed.data.plan;
+  if (plan && plan !== tenant.plan && tenant.agents > planLimit(plan)) {
+    throw invalid({
+      plan: `${tenant.name} has ${tenant.agents} active employees; the ${plan} plan allows ${planLimit(plan)}. Deactivate people first or pick a larger plan.`,
+    });
   }
   if (Object.keys(parsed.data).length > 0) {
     await db.update(t.tenants).set(parsed.data).where(eq(t.tenants.id, tenant.id)).catch(uniqueName);

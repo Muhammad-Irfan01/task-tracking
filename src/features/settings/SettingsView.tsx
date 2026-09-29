@@ -176,8 +176,7 @@ function OrganizationForm({ settings, canEdit, onSaved }: { settings: OrgSetting
         <div>
           <p className="text-sm font-medium text-ink-900 dark:text-paper-100">{settings.name}</p>
           <p className="text-xs text-ink-900/50 dark:text-paper-100/50">
-            Plan: {settings.plan} · {settings.seatsUsed}
-            {settings.maxAgents === null ? "" : ` of ${settings.maxAgents}`} seats used
+            Plan: {settings.plan} · {settings.seatsUsed} of {settings.maxAgents} employees
             {settings.emailDomain ? ` · Staff emails: @${settings.emailDomain}` : ""}
           </p>
         </div>

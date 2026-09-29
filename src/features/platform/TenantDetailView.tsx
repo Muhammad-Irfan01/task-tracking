@@ -3,9 +3,9 @@
 import { Ban, CheckCircle2, Mail, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { BackLink, Button, Card, ErrorState, FormModal, Input, Modal, PageHeader, Skeleton, StatCard, Table, Td, Tr } from "@/components/ui";
+import { BackLink, Button, Card, ErrorState, FormModal, Input, Modal, PageHeader, Select, Skeleton, StatCard, Table, Td, Tr } from "@/components/ui";
 import { useZodForm } from "@/hooks/useZodForm";
-import { PLAN_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/constants";
+import { PLAN_IDS, planLabel, TIMEZONE_OPTIONS } from "@/lib/constants";
 import { tenantAdminSchema, tenantSchema } from "@/lib/schemas";
 import { errorMessage, platformService, type InviteResult } from "@/services";
 import { confirm, toast } from "@/store";
@@ -95,7 +95,7 @@ export function TenantDetailView({ id }: { id: string }) {
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Active agents" value={`${tenant.agents}${tenant.maxAgents === null ? "" : ` / ${tenant.maxAgents}`}`} />
+        <StatCard label="Active employees" value={`${tenant.agents} / ${tenant.maxAgents}`} delta={`${tenant.plan} plan`} deltaPositive trend="flat" />
         <StatCard label="Administrators" value={tenant.admins} accent="emerald" />
         <StatCard label="Open tickets" value={`${tenant.openTickets} of ${tenant.totalTickets}`} accent="amber" />
       </div>
@@ -103,7 +103,7 @@ export function TenantDetailView({ id }: { id: string }) {
       <div className="grid gap-5 lg:grid-cols-5">
         <Card className="p-5 lg:col-span-2">
           <h2 className="mb-4 font-display font-semibold text-ink-900 dark:text-paper-100">Subscription & details</h2>
-          <TenantForm key={`${tenant.id}-${tenant.name}-${tenant.plan}-${tenant.maxAgents}-${tenant.emailDomain}`} tenant={tenant} onSaved={setTenant} />
+          <TenantForm key={`${tenant.id}-${tenant.name}-${tenant.plan}-${tenant.emailDomain}`} tenant={tenant} onSaved={setTenant} />
         </Card>
 
         <Card className="lg:col-span-3">
@@ -182,14 +182,13 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
     emailDomain: tenant.emailDomain ?? "",
     timezone: tenant.timezone,
     plan: tenant.plan,
-    maxAgents: tenant.maxAgents ?? Number.NaN,
     status: tenant.status,
   });
 
   // Status has its own Suspend / Reactivate button, so the form never sends it.
   const onSubmit = form.handleSubmit(async (input) => {
-    const { name, supportEmail, emailDomain, timezone, plan, maxAgents } = input;
-    onSaved(await platformService.updateTenant(tenant.id, { name, supportEmail, emailDomain, timezone, plan, maxAgents }));
+    const { name, supportEmail, emailDomain, timezone, plan } = input;
+    onSaved(await platformService.updateTenant(tenant.id, { name, supportEmail, emailDomain, timezone, plan }));
     toast.success("Organization saved");
   });
 
@@ -203,21 +202,14 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
         hint={tenant.emailDomain ? "Every admin and agent must use an @this-domain email." : "Not set: any email is allowed. Set it to restrict staff to the company's domain."}
         {...form.field("emailDomain")}
       />
-      <Input label="Plan" list="plan-options" {...form.field("plan")} />
-      <Input
-        label="Seat limit"
-        type="number"
-        min={1}
-        placeholder="Unlimited"
-        hint="Maximum active agents. Leave blank for unlimited."
-        {...form.field("maxAgents", { numeric: true })}
-      />
-      <Input label="Time zone" list="timezone-options" {...form.field("timezone")} />
-      <datalist id="plan-options">
-        {PLAN_OPTIONS.map((p) => (
-          <option key={p} value={p} />
+      <Select label="Plan" {...form.field("plan")}>
+        {PLAN_IDS.map((p) => (
+          <option key={p} value={p}>
+            {planLabel(p)}
+          </option>
         ))}
-      </datalist>
+      </Select>
+      <Input label="Time zone" list="timezone-options" {...form.field("timezone")} />
       <datalist id="timezone-options">
         {TIMEZONE_OPTIONS.map((tz) => (
           <option key={tz} value={tz} />

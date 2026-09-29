@@ -6,7 +6,7 @@ A multi-organization help-desk platform (tickets, customers, agents, SLAs, knowl
 
 | Role | Signs in and lands on | Can do |
 | --- | --- | --- |
-| **Super admin** (you, the platform owner) — from `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | `/login` → `/platform` | Create client organizations with their first admin, set plan and seat limit, add more admins, re-send invites, suspend / reactivate / delete organizations. Can't see inside a desk. |
+| **Super admin** (you, the platform owner) — from `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | `/login` → `/platform` | Create client organizations with their first admin, set the plan (Small 75 / Medium 250 / Large 1000 employees), add more admins, re-send invites, suspend / reactivate / delete organizations. Can't see inside a desk. |
 | **Organization admin** — invited by the super admin | `/login` → their desk | Everything inside their own organization: invite staff (Agents → Add Agent), departments, teams, SLA plans, help topics, settings |
 | **Staff (agent)** — invited by their organization admin | `/login` → their desk | Tickets, customers, knowledge base, reports inside their organization |
 
@@ -101,8 +101,9 @@ Copy `.env.example` to `.env.local` to configure these locally.
 
 ## What's live
 
-- **Platform console** (`/platform`) — organizations with plan, seat limit (enforced when adding or reactivating
-  agents), status and usage; add admins; re-send invites. If an invite email can't be sent, the console shows the
+- **Platform console** (`/platform`) — organizations with a plan — Small (up to 75 active employees), Medium (250) or
+  Large (1000), enforced when adding or reactivating people, and a downgrade below the current headcount is
+  refused — plus status and usage; add admins; re-send invites. If an invite email can't be sent, the console shows the
   link so you can pass it on. Suspending an organization signs everyone in it out immediately.
 - **Account lifecycle** — invite (`/reset-password?token=…`), forgot password (`/forgot-password`), and reset.
   Reset tokens are random, single-use, expire in 30 minutes, and only their SHA-256 hash is stored; requesting a

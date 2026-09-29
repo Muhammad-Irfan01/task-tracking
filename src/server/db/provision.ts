@@ -1,4 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
+import type { PlanId } from "@/lib/constants";
 import type { Database } from "./client";
 import * as t from "./schema";
 
@@ -9,8 +10,7 @@ export interface TenantInput {
   supportEmail: string;
   emailDomain: string | null;
   timezone: string;
-  plan: string;
-  maxAgents: number | null;
+  plan: PlanId;
 }
 
 /**

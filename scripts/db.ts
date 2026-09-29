@@ -136,7 +136,7 @@ async function seed(database: Database) {
     supportEmail: "support@threadline.io",
     emailDomain: "threadline.io",
     timezone: "Asia/Karachi (UTC+05:00)",
-    plan: "Business",
+    plan: "Medium",
   });
   await database.insert(t.organizations).values(orgs.map((o) => ({ ...o, tenantId })));
   // Departments first without managers (staff reference departments), then backfill.
@@ -240,8 +240,7 @@ async function seedSecondTenant(database: Database, credential: { hash: string; 
     supportEmail: "help@northwind.test",
     emailDomain: "northwind.test",
     timezone: "UTC (UTC+00:00)",
-    plan: "Starter",
-    maxAgents: 5,
+    plan: "Small",
   });
   const dept = (await defaultDepartment(database, tenantId))!;
   const [admin] = await database

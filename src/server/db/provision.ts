@@ -7,6 +7,7 @@ export const INDEPENDENT_ORG = "Independent Customers";
 export interface TenantInput {
   name: string;
   supportEmail: string;
+  emailDomain: string | null;
   timezone: string;
   plan: string;
   maxAgents: number | null;

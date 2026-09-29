@@ -29,6 +29,13 @@
       "when": 1790676507068,
       "tag": "0003_drop_org_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790681361170,
+      "tag": "0004_tenant_email_domain",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ export async function getOrgSettings(): Promise<OrgSettings> {
     timezone: row.timezone,
     plan: row.plan,
     maxAgents: row.maxAgents,
+    emailDomain: row.emailDomain,
     seatsUsed,
   };
 }

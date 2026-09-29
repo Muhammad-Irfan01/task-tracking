@@ -103,7 +103,7 @@ export function TenantDetailView({ id }: { id: string }) {
       <div className="grid gap-5 lg:grid-cols-5">
         <Card className="p-5 lg:col-span-2">
           <h2 className="mb-4 font-display font-semibold text-ink-900 dark:text-paper-100">Subscription & details</h2>
-          <TenantForm key={`${tenant.id}-${tenant.name}-${tenant.plan}-${tenant.maxAgents}`} tenant={tenant} onSaved={setTenant} />
+          <TenantForm key={`${tenant.id}-${tenant.name}-${tenant.plan}-${tenant.maxAgents}-${tenant.emailDomain}`} tenant={tenant} onSaved={setTenant} />
         </Card>
 
         <Card className="lg:col-span-3">
@@ -158,6 +158,7 @@ export function TenantDetailView({ id }: { id: string }) {
 
       <AddAdminModal
         tenantId={tenant.id}
+        emailDomain={tenant.emailDomain}
         open={addingAdmin}
         onClose={() => setAddingAdmin(false)}
         onAdded={(email, result) => {
@@ -178,6 +179,7 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
   const form = useZodForm(tenantSchema, {
     name: tenant.name,
     supportEmail: tenant.supportEmail,
+    emailDomain: tenant.emailDomain ?? "",
     timezone: tenant.timezone,
     plan: tenant.plan,
     maxAgents: tenant.maxAgents ?? Number.NaN,
@@ -186,8 +188,8 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
 
   // Status has its own Suspend / Reactivate button, so the form never sends it.
   const onSubmit = form.handleSubmit(async (input) => {
-    const { name, supportEmail, timezone, plan, maxAgents } = input;
-    onSaved(await platformService.updateTenant(tenant.id, { name, supportEmail, timezone, plan, maxAgents }));
+    const { name, supportEmail, emailDomain, timezone, plan, maxAgents } = input;
+    onSaved(await platformService.updateTenant(tenant.id, { name, supportEmail, emailDomain, timezone, plan, maxAgents }));
     toast.success("Organization saved");
   });
 
@@ -195,6 +197,12 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <Input label="Organization name" {...form.field("name")} />
       <Input label="Support email" type="email" {...form.field("supportEmail")} />
+      <Input
+        label="Staff email domain"
+        placeholder="acme.com"
+        hint={tenant.emailDomain ? "Every admin and agent must use an @this-domain email." : "Not set: any email is allowed. Set it to restrict staff to the company's domain."}
+        {...form.field("emailDomain")}
+      />
       <Input label="Plan" list="plan-options" {...form.field("plan")} />
       <Input
         label="Seat limit"
@@ -226,11 +234,13 @@ function TenantForm({ tenant, onSaved }: { tenant: TenantDetail; onSaved: (t: Te
 
 function AddAdminModal({
   tenantId,
+  emailDomain,
   open,
   onClose,
   onAdded,
 }: {
   tenantId: number;
+  emailDomain: string | null;
   open: boolean;
   onClose: () => void;
   onAdded: (email: string, invite: InviteResult) => void;
@@ -246,7 +256,14 @@ function AddAdminModal({
   return (
     <FormModal open={open} onClose={onClose} title="Add administrator" onSubmit={onSubmit} submitting={form.submitting} submitLabel="Add & invite">
       <Input label="Full name" autoComplete="off" {...form.field("name")} />
-      <Input label="Email" type="email" autoComplete="off" hint="They get an email to set their password." {...form.field("email")} />
+      <Input
+        label="Email"
+        type="email"
+        autoComplete="off"
+        placeholder={emailDomain ? `name@${emailDomain}` : undefined}
+        hint={emailDomain ? `Must be an @${emailDomain} address. They get an email to set their password.` : "They get an email to set their password."}
+        {...form.field("email")}
+      />
     </FormModal>
   );
 }

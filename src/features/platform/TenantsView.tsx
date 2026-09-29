@@ -97,7 +97,7 @@ export function TenantsView() {
           />
         )}
         {tenants && tenants.length > 0 && (
-          <Table columns={["Organization", "Plan", "Seats", "Tickets", "Status", "Created"]}>
+          <Table columns={["Organization", "Domain", "Plan", "Seats", "Tickets", "Status", "Created"]}>
             {filtered.map((t) => (
               <Tr key={t.id}>
                 <Td>
@@ -106,6 +106,7 @@ export function TenantsView() {
                   </Link>
                   <p className="text-xs text-ink-900/45 dark:text-paper-100/45">{t.supportEmail}</p>
                 </Td>
+                <Td muted>{t.emailDomain ? `@${t.emailDomain}` : "Any"}</Td>
                 <Td muted>{t.plan}</Td>
                 <Td muted>
                   {t.agents}
@@ -152,6 +153,7 @@ function CreateTenantModal({
   const initial = {
     name: "",
     supportEmail: "",
+    emailDomain: "",
     timezone: "UTC (UTC+00:00)",
     plan: "Business",
     maxAgents: Number.NaN,
@@ -180,6 +182,12 @@ function CreateTenantModal({
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Organization name" placeholder="e.g. Acme Corp" {...form.field("name")} />
         <Input label="Support email" type="email" placeholder="support@acme.com" {...form.field("supportEmail")} />
+        <Input
+          label="Staff email domain"
+          placeholder="acme.com"
+          hint="Every admin and agent must use an @this-domain email."
+          {...form.field("emailDomain")}
+        />
         <Input label="Plan" list="plan-options" {...form.field("plan")} />
         <Input
           label="Seat limit"
@@ -209,7 +217,8 @@ function CreateTenantModal({
             label="Admin email"
             type="email"
             autoComplete="off"
-            hint="They get an email to set their password."
+            placeholder={form.values.emailDomain ? `name@${String(form.values.emailDomain).replace(/^@/, "")}` : "name@acme.com"}
+            hint="Must be on the staff email domain. They get an email to set their password."
             {...form.field("adminEmail")}
           />
         </div>

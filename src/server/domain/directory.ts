@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { AVATAR_COLORS } from "@/lib/constants";
 import {
+  emailInDomain,
   agentSchema,
   customerSchema,
   departmentSchema,
@@ -163,6 +164,15 @@ async function assertNotPlatformEmail(email: string | undefined) {
   if (taken) throw invalid({ email: "This email is already in use" });
 }
 
+/** When the organization has an email domain, agents must use it (name@acme.com). */
+async function assertEmailInTenantDomain(address: string | undefined) {
+  if (!address) return;
+  const [tenant] = await db.select({ emailDomain: tenants.emailDomain }).from(tenants).where(eq(tenants.id, currentTenant()));
+  if (!emailInDomain(address, tenant?.emailDomain)) {
+    throw invalid({ email: `Use an @${tenant!.emailDomain} email address` });
+  }
+}
+
 /** Enforces the organization's seat limit (set by the platform) for active agents. */
 async function assertSeatAvailable(activatingId?: number) {
   const [tenant] = await db.select({ maxAgents: tenants.maxAgents }).from(tenants).where(eq(tenants.id, currentTenant()));
@@ -193,6 +203,7 @@ export const agents = createResource({
   insert: async ({ dept, ...input }) => {
     const departmentId = (await resolveDepartment(dept))!;
     await assertNotPlatformEmail(input.email);
+    await assertEmailInTenantDomain(input.email);
     if (input.active) await assertSeatAvailable();
     const total = await count(db.select({ n: countSql }).from(staff).where(inTenant(staff.tenantId)));
     const [row] = await db
@@ -204,6 +215,7 @@ export const agents = createResource({
   update: async (id, { dept, ...changes }) => {
     const departmentId = await resolveDepartment(dept);
     await assertNotPlatformEmail(changes.email);
+    await assertEmailInTenantDomain(changes.email);
     if (changes.active) await assertSeatAvailable(id);
     const set = { ...changes, ...(departmentId ? { departmentId } : {}) };
     if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(and(eq(staff.id, id), inTenant(staff.tenantId)))).length > 0;

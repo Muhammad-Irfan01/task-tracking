@@ -11,6 +11,15 @@ Threadline is a platform you sell to many client organizations. There are three 
 Every organization is a separate desk: an organization can never see another organization's tickets, customers,
 agents, articles or files. There is no public sign-up — everyone joins through an invite email.
 
+Each organization also has a **staff email domain** (e.g. `acme.com`). Every admin and agent in it must have an
+`name@acme.com` email, and a domain can belong to only one organization. Public providers (gmail.com, yahoo.com,
+outlook.com, …) can't be used as a domain. Organizations created before this rule have no domain (any email
+allowed) until you set one.
+
+> **For testing you need a domain whose mailboxes you can read** (e.g. your company domain `gulfdesks.com`),
+> because invites go to `name@<domain>`. If you don't have one, use a made-up domain like `acme.test` and copy the
+> invite links from the console (they're shown whenever the email can't be delivered).
+
 > **This is your live database.** Everything you create is real data. Create test organizations with names
 > starting with `[TEST]` and delete them in Part 9. Deleting an organization removes all of its data.
 
@@ -21,13 +30,13 @@ agents, articles or files. There is no public sign-up — everyone joins through
 ```mermaid
 flowchart TD
     SA[Super admin<br/>signs in at /login] --> P[/platform console/]
-    P --> C[New organization<br/>name, plan, seat limit,<br/>first admin name + email]
+    P --> C[New organization<br/>name, staff email domain, plan,<br/>seat limit, first admin @domain]
     C --> AUTO[Starter setup created automatically:<br/>General Support dept · Standard SLA 48h ·<br/>General Enquiry topic · Independent Customers]
     C --> INV1[(Invite email to org admin<br/>link valid 72 h)]
     INV1 --> OA[Org admin sets password<br/>→ lands in their desk]
 
     OA --> SETUP[Sets up the desk:<br/>departments · SLA plans · help topics ·<br/>teams · canned responses · knowledge base]
-    OA --> ADD[Agents → Add Agent<br/>limited by seat limit]
+    OA --> ADD[Agents → Add Agent<br/>email must be @domain ·<br/>limited by seat limit]
     ADD --> INV2[(Invite email to staff)]
     INV2 --> ST[Staff sets password<br/>→ lands in the same desk]
 
@@ -79,8 +88,9 @@ name, so your existing admin and agents keep working. In `/platform` it's the or
 > Forgot the super admin password? Change `SUPER_ADMIN_PASSWORD` in Vercel and redeploy. The build updates it.
 
 **Get ready for testing:**
-- Two or three mailboxes you can read. Gmail aliases work: `you+acmeadmin@gmail.com`, `you+acmeagent@gmail.com`,
-  `you+betaadmin@gmail.com`.
+- Test domains for the organizations, e.g. `acme.test` and `beta.test`. You can't receive mail at made-up
+  domains, so **copy each invite link from the console dialog** (it appears when the email can't be delivered)
+  and open it yourself. Use a real company domain instead if you want to test real invite emails.
 - Three browser windows, so three people can be signed in at once: a normal window (super admin), a private
   window (Acme users), and a different browser or profile (Beta users).
 - Keep **Vercel → Logs** open in a tab, to catch server errors.
@@ -91,9 +101,9 @@ Fill in as you go:
 | --- | --- |
 | Production URL | `https://______________________` |
 | Super admin email | |
-| Acme admin email | |
-| Acme agent email | |
-| Beta admin email | |
+| Acme domain / admin email | `acme.test` / `admin@acme.test` |
+| Acme agent email | `agent@acme.test` |
+| Beta domain / admin email | `beta.test` / `admin@beta.test` |
 | Tester / date | |
 
 ---
@@ -117,9 +127,12 @@ Fill in as you go:
 | --- | --- | --- | --- |
 | 2.1 | Click **New organization** | A form opens | ☐ |
 | 2.2 | Click **Create organization** with the form empty | Each required field shows a red error; nothing is created | ☐ |
-| 2.3 | Fill in: Name `[TEST] Acme`, Support email `support@acme.test`, Plan `Starter`, **Seat limit `2`**, Time zone any, Admin name `Acme Admin`, Admin email = your *Acme admin* mailbox | — | ☐ |
+| 2.3a | Enter Staff email domain `gmail.com` | Error "Use the organization's own domain, not a public email provider" | ☐ |
+| 2.3b | Enter domain `acme.test` but admin email `admin@other.test` | Error "The admin's email must be on the organization's domain" | ☐ |
+| 2.3 | Fill in: Name `[TEST] Acme`, Support email `support@acme.test`, **Staff email domain `acme.test`**, Plan `Starter`, **Seat limit `2`**, Time zone any, Admin name `Acme Admin`, Admin email `admin@acme.test` | — | ☐ |
 | 2.4 | Click **Create organization** | "Organization created" dialog. If email is set up: "An invite … was emailed to …". If not: an amber warning plus the invite link with a **Copy** button | ☐ |
-| 2.5 | Close the dialog | `[TEST] Acme` is at the top of the list: plan Starter, seats `1 / 2`, 0 tickets, status **Active** | ☐ |
+| 2.5 | Close the dialog | `[TEST] Acme` is at the top of the list: domain `@acme.test`, plan Starter, seats `1 / 2`, 0 tickets, status **Active** | ☐ |
+| 2.5b | Create another organization with domain `acme.test` | Error "Another organization already uses this domain" | ☐ |
 | 2.6 | Try to create another organization named `[test] acme` (different case) | Error "An organization with this name already exists" | ☐ |
 | 2.7 | Try to create an organization whose admin email is an **existing agent's** email | Error "This email already belongs to an agent"; no half-created organization appears in the list | ☐ |
 | 2.8 | Try to create one whose admin email is **your super admin email** | Error "This email is already in use"; nothing is created | ☐ |
@@ -139,7 +152,7 @@ Use the **private window** for this part.
 | 3.4 | Look under the logo in the sidebar | It shows **[TEST] Acme** | ☐ |
 | 3.5 | Open **Tickets, Customers, Agents, Knowledge Base, Reports** | All empty. **You must NOT see any other organization's data.** Agents lists only Acme Admin | ☐ |
 | 3.6 | Open **Departments, SLA Plans, Help Topics, Organizations** | Starter records only: *General Support*, *Standard SLA (48h)*, *General Enquiry*, *Independent Customers* | ☐ |
-| 3.7 | **Settings → Organization** | Name `[TEST] Acme`, "Plan: Starter · 1 of 2 seats used"; you can edit the name, support email and time zone | ☐ |
+| 3.7 | **Settings → Organization** | Name `[TEST] Acme`, "Plan: Starter · 1 of 2 seats used · Staff emails: @acme.test"; you can edit the name, support email and time zone (not the domain) | ☐ |
 | 3.8 | Sign out, then open the same invite link again | The page says the link is invalid or expired (links work once) | ☐ |
 | 3.9 | Back in the **super admin** window, refresh the Acme page | Acme Admin now shows as **Active**; no "Resend invite" button | ☐ |
 | 3.10 | In the private window, open `/platform` | You're sent back to the Dashboard; org admins can't open the console | ☐ |
@@ -152,12 +165,14 @@ Still in the private window, as **Acme Admin**.
 
 | # | Step | Expected result | ✓ |
 | --- | --- | --- | --- |
-| 4.1 | **Agents → Add Agent**: name `Acme Agent`, email = your *Acme agent* mailbox, department General Support, role Agent, not admin | Created; toast says an invite was emailed. Seats are now 2 / 2 | ☐ |
+| 4.0 | **Agents → Add Agent** with email `someone@gmail.com` | Error "Use an @acme.test email address"; the email field hint says the same | ☐ |
+| 4.1 | **Agents → Add Agent**: name `Acme Agent`, email `agent@acme.test`, department General Support, role Agent, not admin | Created **in [TEST] Acme only** (not visible to any other organization). Seats are now 2 / 2 | ☐ |
 | 4.2 | Add one more agent (any test email) | Refused: "Your plan allows 2 active agents. Deactivate someone or ask your provider for more seats." | ☐ |
 | 4.3 | **Super admin window:** on the Acme page set **Seat limit** to `5` → **Save** | "Organization saved"; stats show `x / 5` | ☐ |
 | 4.4 | Private window: add the extra agent again | Now it works | ☐ |
-| 4.5 | Try to add an agent with an email that already exists in *another* organization, e.g. `nadia@northwind.test` or an agent from organization #1 | Refused: that email is already used | ☐ |
-| 4.6 | Open the *Acme agent* invite email in a **third browser or profile**, set a password | Signed in to the **[TEST] Acme** desk as a regular agent | ☐ |
+| 4.5 | Try to add an agent with another organization's domain, e.g. `x@<Beta's domain>` or an organization #1 email | Refused: "Use an @acme.test email address" | ☐ |
+| 4.5b | Settings → General: change your own email to `ali@other.test` | Refused: must stay on @acme.test | ☐ |
+| 4.6 | Open the *Acme agent* invite (email, or the link from the server log / ask the super admin to use **Resend invite** in the console) in a **third browser or profile**, set a password | Signed in to the **[TEST] Acme** desk as a regular agent | ☐ |
 | 4.7 | As the agent: open Agents | No "Add Agent" button. Editing someone else is refused. Settings → Organization is read-only | ☐ |
 
 ---
@@ -186,7 +201,8 @@ Create a second organization and confirm the two can't see each other.
 
 | # | Step | Expected result | ✓ |
 | --- | --- | --- | --- |
-| 6.1 | Super admin: **New organization** `[TEST] Beta` with your *Beta admin* mailbox. Accept the invite in a browser where no one else is signed in | Beta Admin lands in an **empty** Beta desk | ☐ |
+| 6.1 | Super admin: **New organization** `[TEST] Beta`, domain `beta.test`, admin `admin@beta.test`. Accept the invite in a browser where no one else is signed in | Beta Admin lands in an **empty** Beta desk | ☐ |
+| 6.1b | As Beta Admin: Add Agent with `x@acme.test` | Refused: "Use an @beta.test email address" — Acme people can't be added to Beta | ☐ |
 | 6.2 | As Beta Admin: Tickets, Customers, Agents, Knowledge Base, Reports, Search | **Nothing** from Acme or organization #1 | ☐ |
 | 6.3 | As **Acme**: open the ticket from 5.3 and copy its URL, e.g. `/tickets/9123` | — | ☐ |
 | 6.4 | As **Beta**: paste that URL | "Ticket not found". The ticket number isn't visible | ☐ |
@@ -218,6 +234,8 @@ If Vercel **Deployment Protection** is on, curl gets a Vercel login page instead
 | 7.1 | Acme page → **Add admin** with a new test email | "Invite sent" dialog; the person appears as Admin — Invited | ☐ |
 | 7.2 | Click **Resend invite** on that person | A new link is emailed (or shown); **the old link stops working** | ☐ |
 | 7.3 | Edit Acme's plan to `Business` → Save | The list and the org admin's Settings → Organization show Business | ☐ |
+| 7.3b | Change Acme's staff email domain to `acme.io` → Save | Refused: "N people use another domain (…). Change their emails first." | ☐ |
+| 7.3c | Organization #1 (created before domains): open it, set its domain to your company domain | Saved if all its people already use that domain, otherwise the same "N people use another domain" message | ☐ |
 | 7.4 | Click **Suspend** → confirm | Status shows **Suspended** | ☐ |
 | 7.5 | In the Acme windows, click any page | Signed out, back to `/login` | ☐ |
 | 7.6 | Try to sign in as Acme Admin | "Your organization's account is suspended. Contact your provider." | ☐ |

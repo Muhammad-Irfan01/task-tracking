@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrentUser } from "@/components/providers/SessionProvider";
 import { FormModal, Input, Select, Switch } from "@/components/ui";
 import { useCollection } from "@/hooks/useCollection";
 import { useZodForm } from "@/hooks/useZodForm";
@@ -9,6 +10,7 @@ import type { Agent } from "@/types";
 import type { EntityFormProps } from "./types";
 
 export function AgentFormModal({ open, entity, onClose }: EntityFormProps<Agent>) {
+  const user = useCurrentUser();
   const { create, update } = useStaffStore();
   const departments = useCollection(useDepartmentsStore);
   const form = useZodForm(agentSchema, {
@@ -37,7 +39,13 @@ export function AgentFormModal({ open, entity, onClose }: EntityFormProps<Agent>
     <FormModal open={open} onClose={onClose} title={entity ? "Edit agent" : "Add agent"} onSubmit={onSubmit} submitting={form.submitting}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Full name" {...form.field("name")} />
-        <Input label="Email" type="email" placeholder="name@threadline.io" {...form.field("email")} />
+        <Input
+          label="Email"
+          type="email"
+          placeholder={user.tenantEmailDomain ? `name@${user.tenantEmailDomain}` : "name@company.com"}
+          hint={user.tenantEmailDomain ? `Must be an @${user.tenantEmailDomain} address.` : undefined}
+          {...form.field("email")}
+        />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Select label="Department" {...form.field("dept")}>

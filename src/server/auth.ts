@@ -76,6 +76,7 @@ const sessionColumns = {
   id: staff.id,
   tenantId: staff.tenantId,
   tenantName: tenants.name,
+  tenantEmailDomain: tenants.emailDomain,
   tenantStatus: tenants.status,
   name: staff.name,
   email: staff.email,
@@ -111,6 +112,7 @@ function toSessionUser(row: NonNullable<Awaited<ReturnType<typeof findStaff>>>):
     avatarColor: row.avatarColor,
     tenantId: row.tenantId,
     tenantName: row.tenantName,
+    tenantEmailDomain: row.tenantEmailDomain,
   };
 }
 

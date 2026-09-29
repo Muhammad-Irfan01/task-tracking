@@ -47,6 +47,11 @@ export const tenants = pgTable(
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     supportEmail: text("support_email").notNull(),
+    /**
+     * Company email domain (e.g. "acme.com"). When set, every agent's email must
+     * be @ this domain. One domain belongs to one tenant.
+     */
+    emailDomain: text("email_domain"),
     timezone: text("timezone").notNull().default("UTC (UTC+00:00)"),
     plan: text("plan").notNull().default("Business"),
     /** Maximum active agents; null means unlimited. */
@@ -54,7 +59,10 @@ export const tenants = pgTable(
     status: text("status", { enum: ["Active", "Suspended"] }).notNull().default("Active"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("tenants_name_lower_unique").on(sql`lower(${t.name})`)],
+  (t) => [
+    uniqueIndex("tenants_name_lower_unique").on(sql`lower(${t.name})`),
+    uniqueIndex("tenants_email_domain_lower_unique").on(sql`lower(${t.emailDomain})`),
+  ],
 );
 
 const tenantId = () =>

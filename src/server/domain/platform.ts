@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
-import { tenantAdminSchema, tenantCreateSchema, tenantSchema, toFieldErrors } from "@/lib/schemas";
+import { emailInDomain, tenantAdminSchema, tenantCreateSchema, tenantSchema, toFieldErrors } from "@/lib/schemas";
 import type { Tenant, TenantDetail, TenantMember } from "@/types";
 import { db } from "../db";
-import { isUniqueViolation } from "../db/errors";
+import { isUniqueViolation, violatedColumn } from "../db/errors";
 import { claimDefaultDepartment, defaultDepartment, provisionTenant } from "../db/provision";
 import * as t from "../db/schema";
 import { conflict, invalid, notFound } from "../errors";
@@ -23,6 +23,7 @@ async function tenantRows(where?: SQL): Promise<Tenant[]> {
       id: t.tenants.id,
       name: t.tenants.name,
       supportEmail: t.tenants.supportEmail,
+      emailDomain: t.tenants.emailDomain,
       timezone: t.tenants.timezone,
       plan: t.tenants.plan,
       maxAgents: t.tenants.maxAgents,
@@ -71,7 +72,10 @@ export async function getTenant(rawId: string | number): Promise<TenantDetail> {
 // ---------------------------------------------------------------- writes
 
 function uniqueName(error: unknown): never {
-  if (isUniqueViolation(error)) throw invalid({ name: "An organization with this name already exists" });
+  if (isUniqueViolation(error)) {
+    if (violatedColumn(error) === "email_domain") throw invalid({ emailDomain: "Another organization already uses this domain" });
+    throw invalid({ name: "An organization with this name already exists" });
+  }
   throw error;
 }
 
@@ -122,6 +126,18 @@ export async function updateTenant(rawId: string, raw: unknown) {
   const tenant = await tenantOrThrow(rawId);
   const parsed = tenantSchema.partial().safeParse(raw);
   if (!parsed.success) throw invalid(toFieldErrors(parsed.error));
+  const domain = parsed.data.emailDomain;
+  if (domain && domain !== tenant.emailDomain) {
+    // Setting a domain must not strand people who already use another one.
+    const members = await db.select({ email: t.staff.email }).from(t.staff).where(eq(t.staff.tenantId, tenant.id));
+    const outside = members.filter((m) => !emailInDomain(m.email, domain));
+    if (outside.length) {
+      const sample = outside.slice(0, 3).map((m) => m.email).join(", ");
+      throw invalid({
+        emailDomain: `${outside.length} ${outside.length === 1 ? "person uses" : "people use"} another domain (${sample}${outside.length > 3 ? ", …" : ""}). Change their emails first.`,
+      });
+    }
+  }
   if (Object.keys(parsed.data).length > 0) {
     await db.update(t.tenants).set(parsed.data).where(eq(t.tenants.id, tenant.id)).catch(uniqueName);
   }

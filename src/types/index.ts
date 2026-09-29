@@ -178,6 +178,8 @@ export interface SessionUser {
   /** The client organization this agent belongs to. */
   tenantId: number;
   tenantName: string;
+  /** Staff emails must end with @this domain; null = no restriction. */
+  tenantEmailDomain: string | null;
 }
 
 /** A platform operator (super admin) who manages client organizations. */
@@ -194,6 +196,7 @@ export interface Tenant {
   id: number;
   name: string;
   supportEmail: string;
+  emailDomain: string | null;
   timezone: string;
   plan: string;
   maxAgents: number | null;
@@ -236,6 +239,8 @@ export interface OrgSettings {
   seatsUsed: number;
   /** Seat limit set by the platform; null means unlimited. */
   maxAgents: number | null;
+  /** Staff email domain set by the platform; null means any. */
+  emailDomain: string | null;
 }
 
 export interface VolumePoint {

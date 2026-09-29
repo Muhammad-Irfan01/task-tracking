@@ -164,10 +164,39 @@ const seatLimit = z
   .nullable()
   .or(z.nan().transform(() => null));
 
+/** Free email providers can't be claimed by one organization — everyone uses them. */
+export const PUBLIC_EMAIL_DOMAINS = [
+  "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "outlook.com", "hotmail.com", "live.com", "msn.com",
+  "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "mail.com", "zoho.com", "yandex.com",
+];
+
+/** Lower-case `name@domain` check, shared by forms and the server. */
+export function emailInDomain(address: string, domain: string | null | undefined) {
+  return !domain || address.trim().toLowerCase().endsWith(`@${domain.toLowerCase()}`);
+}
+
+/** Company email domain like "acme.com"; blank means "no restriction". */
+const emailDomain = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .transform((v) => v.replace(/^@/, ""))
+  .pipe(
+    z.union([
+      z.literal("").transform(() => null),
+      z
+        .string()
+        .regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "Enter a domain like acme.com")
+        .refine((d) => !PUBLIC_EMAIL_DOMAINS.includes(d), "Use the organization's own domain, not a public email provider"),
+    ]),
+  )
+  .nullable();
+
 /** A client organization on the platform, as the super admin edits it. */
 export const tenantSchema = z.object({
   name: required("Organization name"),
   supportEmail: email,
+  emailDomain,
   timezone: required("Time zone"),
   plan: required("Plan", 60),
   maxAgents: seatLimit,
@@ -175,10 +204,17 @@ export const tenantSchema = z.object({
 });
 
 /** New organization plus its first administrator, who gets an invite email. */
-export const tenantCreateSchema = tenantSchema.omit({ status: true }).extend({
-  adminName: required("Admin name"),
-  adminEmail: email,
-});
+export const tenantCreateSchema = tenantSchema
+  .omit({ status: true })
+  .extend({
+    adminName: required("Admin name"),
+    adminEmail: email,
+  })
+  .refine((v) => v.emailDomain, { path: ["emailDomain"], message: "Staff email domain is required" })
+  .refine((v) => emailInDomain(v.adminEmail, v.emailDomain), {
+    path: ["adminEmail"],
+    message: "The admin's email must be on the organization's domain",
+  });
 
 export const tenantAdminSchema = z.object({
   name: required("Name"),

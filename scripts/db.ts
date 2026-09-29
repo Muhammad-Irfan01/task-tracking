@@ -134,6 +134,7 @@ async function seed(database: Database) {
     id: tenantId,
     name: "Threadline Support Desk",
     supportEmail: "support@threadline.io",
+    emailDomain: "threadline.io",
     timezone: "Asia/Karachi (UTC+05:00)",
     plan: "Business",
   });
@@ -237,6 +238,7 @@ async function seedSecondTenant(database: Database, credential: { hash: string; 
   const tenantId = await provisionTenant(database, {
     name: "Northwind Traders",
     supportEmail: "help@northwind.test",
+    emailDomain: "northwind.test",
     timezone: "UTC (UTC+00:00)",
     plan: "Starter",
     maxAgents: 5,

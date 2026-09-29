@@ -8,7 +8,7 @@ export const apiClient = axios.create({
   timeout: 15_000,
 });
 
-const AUTH_PAGES = ["/login", "/signup", "/forgot-password", "/reset-password"];
+const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password"];
 
 interface ErrorBody {
   message?: string;

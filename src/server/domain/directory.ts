@@ -20,11 +20,15 @@ import {
   organizations as organizationsTable,
   slaPlans as slaPlansTable,
   staff,
+  superAdmins,
   teamMembers,
   teams as teamsTable,
+  tenants,
   tickets,
 } from "../db/schema";
+import { conflict, invalid } from "../errors";
 import { createResource, plural, References } from "../resource";
+import { currentTenant, inTenant } from "../tenant";
 import {
   agentIdByName,
   count,
@@ -51,7 +55,7 @@ async function organizationRows(where?: SQL): Promise<Organization[]> {
       users: sql<number>`(select count(*)::int from ${customersTable} where ${q(customersTable.organizationId)} = ${q(organizationsTable.id)})`,
     })
     .from(organizationsTable)
-    .where(where)
+    .where(and(inTenant(organizationsTable.tenantId), where))
     .orderBy(asc(organizationsTable.id));
 }
 
@@ -61,19 +65,19 @@ export const organizations = createResource({
   list: () => organizationRows(),
   get: async (id) => (await organizationRows(eq(organizationsTable.id, id)))[0],
   insert: async (input) => {
-    const [row] = await db.insert(organizationsTable).values(input).returning({ id: organizationsTable.id });
+    const [row] = await db.insert(organizationsTable).values({ ...input, tenantId: currentTenant() }).returning({ id: organizationsTable.id });
     return row.id;
   },
   update: async (id, changes) => {
     if (Object.keys(changes).length === 0) return true;
-    const rows = await db.update(organizationsTable).set(changes).where(eq(organizationsTable.id, id)).returning({ id: organizationsTable.id });
+    const rows = await db.update(organizationsTable).set(changes).where(and(eq(organizationsTable.id, id), inTenant(organizationsTable.tenantId))).returning({ id: organizationsTable.id });
     return rows.length > 0;
   },
   deleteBlocker: async (id) => {
     const members = await count(db.select({ n: countSql }).from(customersTable).where(eq(customersTable.organizationId, id)));
     return members ? `This organization still has ${plural(members, "customer")}. Move them first.` : null;
   },
-  remove: async (id) => (await db.delete(organizationsTable).where(eq(organizationsTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(organizationsTable).where(and(eq(organizationsTable.id, id), inTenant(organizationsTable.tenantId))).returning()).length > 0,
 });
 
 // ---------------------------------------------------------------- customers
@@ -92,7 +96,7 @@ async function customerRows(where?: SQL): Promise<Customer[]> {
     })
     .from(customersTable)
     .innerJoin(organizationsTable, eq(organizationsTable.id, customersTable.organizationId))
-    .where(where)
+    .where(and(inTenant(customersTable.tenantId), where))
     .orderBy(asc(customersTable.id));
   return rows.map((row) => ({ ...row, joined: isoRequired(row.joined) }));
 }
@@ -111,14 +115,14 @@ export const customers = createResource({
   get: async (id) => (await customerRows(eq(customersTable.id, id)))[0],
   insert: async ({ organization, ...input }) => {
     const organizationId = (await resolveOrganization(organization))!;
-    const [row] = await db.insert(customersTable).values({ ...input, organizationId }).returning({ id: customersTable.id });
+    const [row] = await db.insert(customersTable).values({ ...input, organizationId, tenantId: currentTenant() }).returning({ id: customersTable.id });
     return row.id;
   },
   update: async (id, { organization, ...changes }) => {
     const organizationId = await resolveOrganization(organization);
     const set = { ...changes, ...(organizationId ? { organizationId } : {}) };
-    if (Object.keys(set).length === 0) return (await db.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, id))).length > 0;
-    return (await db.update(customersTable).set(set).where(eq(customersTable.id, id)).returning({ id: customersTable.id })).length > 0;
+    if (Object.keys(set).length === 0) return (await db.select({ id: customersTable.id }).from(customersTable).where(and(eq(customersTable.id, id), inTenant(customersTable.tenantId)))).length > 0;
+    return (await db.update(customersTable).set(set).where(and(eq(customersTable.id, id), inTenant(customersTable.tenantId))).returning({ id: customersTable.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const total = await count(db.select({ n: countSql }).from(tickets).where(eq(tickets.customerId, id)));
@@ -126,7 +130,7 @@ export const customers = createResource({
       ? `This customer has ${plural(total, "ticket")} on file. Set the account to Inactive instead of deleting it.`
       : null;
   },
-  remove: async (id) => (await db.delete(customersTable).where(eq(customersTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(customersTable).where(and(eq(customersTable.id, id), inTenant(customersTable.tenantId))).returning()).length > 0,
 });
 
 // ---------------------------------------------------------------- staff
@@ -148,8 +152,30 @@ async function agentRows(where?: SQL): Promise<Agent[]> {
     })
     .from(staff)
     .innerJoin(departmentsTable, eq(departmentsTable.id, staff.departmentId))
-    .where(where)
+    .where(and(inTenant(staff.tenantId), where))
     .orderBy(asc(staff.id));
+}
+
+/** Sign-in is by email alone, so an agent can't share an email with a platform super admin. */
+async function assertNotPlatformEmail(email: string | undefined) {
+  if (!email) return;
+  const [taken] = await db.select({ id: superAdmins.id }).from(superAdmins).where(eq(superAdmins.email, email)).limit(1);
+  if (taken) throw invalid({ email: "This email is already in use" });
+}
+
+/** Enforces the organization's seat limit (set by the platform) for active agents. */
+async function assertSeatAvailable(activatingId?: number) {
+  const [tenant] = await db.select({ maxAgents: tenants.maxAgents }).from(tenants).where(eq(tenants.id, currentTenant()));
+  if (tenant?.maxAgents == null) return;
+  const active = await count(
+    db
+      .select({ n: countSql })
+      .from(staff)
+      .where(and(inTenant(staff.tenantId), eq(staff.active, true), activatingId ? sql`${staff.id} <> ${activatingId}` : undefined)),
+  );
+  if (active >= tenant.maxAgents) {
+    throw conflict(`Your plan allows ${plural(tenant.maxAgents, "active agent")}. Deactivate someone or ask your provider for more seats.`);
+  }
 }
 
 async function resolveDepartment(name: string | undefined, field = "dept") {
@@ -166,18 +192,22 @@ export const agents = createResource({
   get: async (id) => (await agentRows(eq(staff.id, id)))[0],
   insert: async ({ dept, ...input }) => {
     const departmentId = (await resolveDepartment(dept))!;
-    const total = await count(db.select({ n: countSql }).from(staff));
+    await assertNotPlatformEmail(input.email);
+    if (input.active) await assertSeatAvailable();
+    const total = await count(db.select({ n: countSql }).from(staff).where(inTenant(staff.tenantId)));
     const [row] = await db
       .insert(staff)
-      .values({ ...input, departmentId, avatarColor: AVATAR_COLORS[total % AVATAR_COLORS.length] })
+      .values({ ...input, departmentId, tenantId: currentTenant(), avatarColor: AVATAR_COLORS[total % AVATAR_COLORS.length] })
       .returning({ id: staff.id });
     return row.id;
   },
   update: async (id, { dept, ...changes }) => {
     const departmentId = await resolveDepartment(dept);
+    await assertNotPlatformEmail(changes.email);
+    if (changes.active) await assertSeatAvailable(id);
     const set = { ...changes, ...(departmentId ? { departmentId } : {}) };
-    if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(eq(staff.id, id))).length > 0;
-    return (await db.update(staff).set(set).where(eq(staff.id, id)).returning({ id: staff.id })).length > 0;
+    if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(and(eq(staff.id, id), inTenant(staff.tenantId)))).length > 0;
+    return (await db.update(staff).set(set).where(and(eq(staff.id, id), inTenant(staff.tenantId))).returning({ id: staff.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const open = await count(db.select({ n: countSql }).from(tickets).where(and(eq(tickets.assigneeId, id), ticketIsOpen)));
@@ -188,7 +218,7 @@ export const agents = createResource({
     if (led) return `This agent leads ${led.name}. Pick a new lead first.`;
     return null;
   },
-  remove: async (id) => (await db.delete(staff).where(eq(staff.id, id)).returning({ id: staff.id })).length > 0,
+  remove: async (id) => (await db.delete(staff).where(and(eq(staff.id, id), inTenant(staff.tenantId))).returning({ id: staff.id })).length > 0,
 });
 
 // ---------------------------------------------------------------- departments
@@ -207,7 +237,7 @@ async function departmentRows(where?: SQL): Promise<Department[]> {
     })
     .from(departmentsTable)
     .leftJoin(manager, eq(manager.id, departmentsTable.managerId))
-    .where(where)
+    .where(and(inTenant(departmentsTable.tenantId), where))
     .orderBy(asc(departmentsTable.id));
   return rows.map((row) => ({ ...row, manager: row.manager ?? "Unassigned" }));
 }
@@ -226,14 +256,14 @@ export const departments = createResource({
   get: async (id) => (await departmentRows(eq(departmentsTable.id, id)))[0],
   insert: async ({ manager: managerName, ...input }) => {
     const managerId = await resolveManager(managerName);
-    const [row] = await db.insert(departmentsTable).values({ ...input, managerId }).returning({ id: departmentsTable.id });
+    const [row] = await db.insert(departmentsTable).values({ ...input, managerId, tenantId: currentTenant() }).returning({ id: departmentsTable.id });
     return row.id;
   },
   update: async (id, { manager: managerName, ...changes }) => {
     const managerId = await resolveManager(managerName);
     const set = { ...changes, ...(managerId ? { managerId } : {}) };
-    if (Object.keys(set).length === 0) return (await db.select({ id: departmentsTable.id }).from(departmentsTable).where(eq(departmentsTable.id, id))).length > 0;
-    return (await db.update(departmentsTable).set(set).where(eq(departmentsTable.id, id)).returning({ id: departmentsTable.id })).length > 0;
+    if (Object.keys(set).length === 0) return (await db.select({ id: departmentsTable.id }).from(departmentsTable).where(and(eq(departmentsTable.id, id), inTenant(departmentsTable.tenantId)))).length > 0;
+    return (await db.update(departmentsTable).set(set).where(and(eq(departmentsTable.id, id), inTenant(departmentsTable.tenantId))).returning({ id: departmentsTable.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const people = await count(db.select({ n: countSql }).from(staff).where(eq(staff.departmentId, id)));
@@ -245,7 +275,7 @@ export const departments = createResource({
     const total = await count(db.select({ n: countSql }).from(tickets).where(eq(tickets.departmentId, id)));
     return total ? `This department has ${plural(total, "ticket")} on file. Move them to another department first.` : null;
   },
-  remove: async (id) => (await db.delete(departmentsTable).where(eq(departmentsTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(departmentsTable).where(and(eq(departmentsTable.id, id), inTenant(departmentsTable.tenantId))).returning()).length > 0,
 });
 
 // ---------------------------------------------------------------- teams
@@ -263,7 +293,7 @@ async function teamRows(where?: SQL): Promise<Team[]> {
     })
     .from(teamsTable)
     .innerJoin(lead, eq(lead.id, teamsTable.leadId))
-    .where(where)
+    .where(and(inTenant(teamsTable.tenantId), where))
     .orderBy(asc(teamsTable.id));
   return rows.map((row) => {
     const memberIds = (typeof row.memberIds === "string" ? JSON.parse(row.memberIds) : row.memberIds).map(Number);
@@ -275,7 +305,7 @@ async function resolveTeamRefs(leadName: string | undefined, memberIds: number[]
   const refs = new References();
   const leadId = await refs.resolve("lead", leadName, agentIdByName, "Unknown or ambiguous agent name");
   if (memberIds?.length) {
-    const found = await db.select({ id: staff.id }).from(staff).where(inArray(staff.id, memberIds));
+    const found = await db.select({ id: staff.id }).from(staff).where(and(inArray(staff.id, memberIds), inTenant(staff.tenantId)));
     if (found.length !== new Set(memberIds).size) refs.errors.memberIds = "Unknown team member";
   }
   refs.assert();
@@ -295,7 +325,7 @@ export const teams = createResource({
   get: async (id) => (await teamRows(eq(teamsTable.id, id)))[0],
   insert: async ({ lead: leadName, memberIds, ...input }) => {
     const leadId = (await resolveTeamRefs(leadName, memberIds))!;
-    const [row] = await db.insert(teamsTable).values({ ...input, leadId }).returning({ id: teamsTable.id });
+    const [row] = await db.insert(teamsTable).values({ ...input, leadId, tenantId: currentTenant() }).returning({ id: teamsTable.id });
     await replaceMembers(row.id, memberIds);
     return row.id;
   },
@@ -304,12 +334,12 @@ export const teams = createResource({
     const set = { ...changes, ...(leadId ? { leadId } : {}) };
     const exists =
       Object.keys(set).length > 0
-        ? (await db.update(teamsTable).set(set).where(eq(teamsTable.id, id)).returning({ id: teamsTable.id })).length > 0
-        : (await db.select({ id: teamsTable.id }).from(teamsTable).where(eq(teamsTable.id, id))).length > 0;
+        ? (await db.update(teamsTable).set(set).where(and(eq(teamsTable.id, id), inTenant(teamsTable.tenantId))).returning({ id: teamsTable.id })).length > 0
+        : (await db.select({ id: teamsTable.id }).from(teamsTable).where(and(eq(teamsTable.id, id), inTenant(teamsTable.tenantId)))).length > 0;
     if (exists && memberIds) await replaceMembers(id, memberIds);
     return exists;
   },
-  remove: async (id) => (await db.delete(teamsTable).where(eq(teamsTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(teamsTable).where(and(eq(teamsTable.id, id), inTenant(teamsTable.tenantId))).returning()).length > 0,
 });
 
 // ---------------------------------------------------------------- SLA plans
@@ -324,7 +354,7 @@ async function slaPlanRows(where?: SQL): Promise<SlaPlan[]> {
       tickets: sql<number>`(select count(*)::int from ${tickets} inner join ${helpTopicsTable} on ${q(helpTopicsTable.id)} = ${q(tickets.helpTopicId)} where ${q(helpTopicsTable.slaPlanId)} = ${q(slaPlansTable.id)} and ${ticketIsOpenQ})`,
     })
     .from(slaPlansTable)
-    .where(where)
+    .where(and(inTenant(slaPlansTable.tenantId), where))
     .orderBy(asc(slaPlansTable.id));
 }
 
@@ -333,16 +363,16 @@ export const slaPlans = createResource({
   schema: slaPlanSchema,
   list: () => slaPlanRows(),
   get: async (id) => (await slaPlanRows(eq(slaPlansTable.id, id)))[0],
-  insert: async (input) => (await db.insert(slaPlansTable).values(input).returning({ id: slaPlansTable.id }))[0].id,
+  insert: async (input) => (await db.insert(slaPlansTable).values({ ...input, tenantId: currentTenant() }).returning({ id: slaPlansTable.id }))[0].id,
   update: async (id, changes) => {
-    if (Object.keys(changes).length === 0) return (await db.select({ id: slaPlansTable.id }).from(slaPlansTable).where(eq(slaPlansTable.id, id))).length > 0;
-    return (await db.update(slaPlansTable).set(changes).where(eq(slaPlansTable.id, id)).returning({ id: slaPlansTable.id })).length > 0;
+    if (Object.keys(changes).length === 0) return (await db.select({ id: slaPlansTable.id }).from(slaPlansTable).where(and(eq(slaPlansTable.id, id), inTenant(slaPlansTable.tenantId)))).length > 0;
+    return (await db.update(slaPlansTable).set(changes).where(and(eq(slaPlansTable.id, id), inTenant(slaPlansTable.tenantId))).returning({ id: slaPlansTable.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const topics = await count(db.select({ n: countSql }).from(helpTopicsTable).where(eq(helpTopicsTable.slaPlanId, id)));
     return topics ? `${plural(topics, "help topic")} still use this plan.` : null;
   },
-  remove: async (id) => (await db.delete(slaPlansTable).where(eq(slaPlansTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(slaPlansTable).where(and(eq(slaPlansTable.id, id), inTenant(slaPlansTable.tenantId))).returning()).length > 0,
 });
 
 // ---------------------------------------------------------------- help topics
@@ -359,7 +389,7 @@ async function helpTopicRows(where?: SQL): Promise<HelpTopic[]> {
     .from(helpTopicsTable)
     .innerJoin(departmentsTable, eq(departmentsTable.id, helpTopicsTable.departmentId))
     .innerJoin(slaPlansTable, eq(slaPlansTable.id, helpTopicsTable.slaPlanId))
-    .where(where)
+    .where(and(inTenant(helpTopicsTable.tenantId), where))
     .orderBy(asc(helpTopicsTable.id));
 }
 
@@ -378,21 +408,16 @@ export const helpTopics = createResource({
   get: async (id) => (await helpTopicRows(eq(helpTopicsTable.id, id)))[0],
   insert: async ({ dept, sla, name }) => {
     const refIds = (await resolveTopicRefs(dept, sla)) as { departmentId: number; slaPlanId: number };
-    return (await db.insert(helpTopicsTable).values({ name, ...refIds }).returning({ id: helpTopicsTable.id }))[0].id;
+    return (await db.insert(helpTopicsTable).values({ name, ...refIds, tenantId: currentTenant() }).returning({ id: helpTopicsTable.id }))[0].id;
   },
   update: async (id, { dept, sla, ...changes }) => {
     const set = { ...changes, ...(await resolveTopicRefs(dept, sla)) };
-    if (Object.keys(set).length === 0) return (await db.select({ id: helpTopicsTable.id }).from(helpTopicsTable).where(eq(helpTopicsTable.id, id))).length > 0;
-    return (await db.update(helpTopicsTable).set(set).where(eq(helpTopicsTable.id, id)).returning({ id: helpTopicsTable.id })).length > 0;
+    if (Object.keys(set).length === 0) return (await db.select({ id: helpTopicsTable.id }).from(helpTopicsTable).where(and(eq(helpTopicsTable.id, id), inTenant(helpTopicsTable.tenantId)))).length > 0;
+    return (await db.update(helpTopicsTable).set(set).where(and(eq(helpTopicsTable.id, id), inTenant(helpTopicsTable.tenantId))).returning({ id: helpTopicsTable.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const total = await count(db.select({ n: countSql }).from(tickets).where(eq(tickets.helpTopicId, id)));
     return total ? `${plural(total, "ticket")} use this help topic. Re-route them first.` : null;
   },
-  remove: async (id) => (await db.delete(helpTopicsTable).where(eq(helpTopicsTable.id, id)).returning()).length > 0,
+  remove: async (id) => (await db.delete(helpTopicsTable).where(and(eq(helpTopicsTable.id, id), inTenant(helpTopicsTable.tenantId))).returning()).length > 0,
 });
-
-/** Used by sign-up and the dashboard to validate departments without a round trip per name. */
-export async function departmentNames() {
-  return (await db.select({ name: departmentsTable.name }).from(departmentsTable).orderBy(asc(departmentsTable.id))).map((d) => d.name);
-}

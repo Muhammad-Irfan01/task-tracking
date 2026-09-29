@@ -57,9 +57,25 @@ export const PRIORITY_DOT_STYLES: Record<TicketPriority, string> = {
   Emergency: "bg-rose-500",
 };
 
+/** Suggestions for time-zone fields (free text is allowed too). */
+export const TIMEZONE_OPTIONS = [
+  "UTC (UTC+00:00)",
+  "Europe/London (UTC+00:00)",
+  "Asia/Dubai (UTC+04:00)",
+  "Asia/Riyadh (UTC+03:00)",
+  "Asia/Karachi (UTC+05:00)",
+  "America/New_York (UTC-05:00)",
+];
+
+/** Suggestions for the plan field in the platform console. */
+export const PLAN_OPTIONS = ["Starter", "Business", "Enterprise"];
+
 export const THEME_STORAGE_KEY = "threadline-theme";
 
 export const SESSION_COOKIE = "threadline_session";
+
+/** Separate cookie for platform (super admin) sessions. */
+export const PLATFORM_COOKIE = "threadline_platform";
 
 export const AVATAR_COLORS = [
   "bg-brand-500",

@@ -5,21 +5,24 @@
  *   tsx scripts/db.ts seed      load demo data (skipped if data exists; --force to wipe first)
  *   tsx scripts/db.ts setup     migrate, then seed only if the database is empty (used by dev/build)
  *   tsx scripts/db.ts reset     drop everything, migrate, seed fresh demo data
- *   tsx scripts/db.ts clean     delete ALL data, keep only the essentials + the admin from ADMIN_EMAIL/ADMIN_PASSWORD
- *                               (if unset, the next production build's `setup` creates it)
+ *   tsx scripts/db.ts clean     delete ALL data (every organization), keep only the super admin from
+ *                               SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD (if unset here, the next build's `setup` creates it)
+ *
+ * Every `setup` also creates or updates the platform super admin from SUPER_ADMIN_*.
  */
 import { loadEnvConfig } from "@next/env";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { migrate as migrateNeon } from "drizzle-orm/neon-http/migrator";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { connect, type Database } from "../src/server/db/client";
+import { claimDefaultDepartment, defaultDepartment, provisionTenant } from "../src/server/db/provision";
 import * as t from "../src/server/db/schema";
 import { cannedResponses, faqArticles, faqCategories } from "../src/server/db/seed/content";
 import { departments, helpTopics, organizations, slaPlans, staff, teams } from "../src/server/db/seed/directory";
 import { buildCustomers, buildTickets } from "../src/server/db/seed/people";
-import { DEMO_PASSWORD, DEMO_SALT, hashPassword } from "../src/server/passwords";
+import { DEMO_PASSWORD, DEMO_SALT, hashPassword, verifyPassword } from "../src/server/passwords";
 import { newPassword } from "../src/lib/schemas";
 
 // Read .env / .env.local exactly like `next dev` / `next build`, so scripts and
@@ -37,7 +40,7 @@ async function migrate() {
 }
 
 async function isEmpty() {
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(t.staff);
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(t.tenants);
   return Number(row.n) === 0;
 }
 
@@ -49,63 +52,54 @@ async function insertAll<T>(insert: (rows: T[]) => Promise<unknown>, rows: T[], 
 const TABLES_BY_DEPENDENCY = [
   "rate_limits", "reset_tokens", "notification_reads", "notifications", "user_preferences", "attachments",
   "messages", "tickets", "canned_responses", "articles", "faq_categories", "help_topics", "sla_plans",
-  "team_members", "teams", "customers", "organizations", "staff", "departments", "org_settings",
+  "team_members", "teams", "customers", "organizations", "staff", "departments", "tenants", "super_admins",
 ];
 
 async function wipe() {
   await db.execute(sql.raw(`TRUNCATE ${TABLES_BY_DEPENDENCY.map((n) => `"${n}"`).join(", ")} RESTART IDENTITY CASCADE`));
 }
 
-/** Admin account for a clean database, from ADMIN_NAME / ADMIN_EMAIL / ADMIN_PASSWORD. */
-function adminFromEnv() {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
+/** Platform super admin from SUPER_ADMIN_NAME / SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD. */
+function superAdminFromEnv() {
+  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SUPER_ADMIN_PASSWORD;
   if (!email || !password) return null;
   const policy = newPassword.safeParse(password);
-  if (!policy.success) throw new Error(`ADMIN_PASSWORD: ${policy.error.issues[0].message}`);
-  return { name: process.env.ADMIN_NAME?.trim() || "Administrator", email, password };
+  if (!policy.success) throw new Error(`SUPER_ADMIN_PASSWORD: ${policy.error.issues[0].message}`);
+  return { name: process.env.SUPER_ADMIN_NAME?.trim() || "Platform Owner", email, password };
 }
 
 /**
- * The minimum a real (non-demo) workspace needs: settings, a department so
- * people can sign up, an SLA plan + help topic so tickets can be created, the
- * catch-all organization for new customers, and an admin. Safe to re-run.
+ * Creates the super admin, or updates their name and password when the
+ * environment changed (so rotating SUPER_ADMIN_PASSWORD + redeploying works).
  */
-async function bootstrap(database: Database) {
-  const admin = adminFromEnv();
-  await database
-    .insert(t.orgSettings)
-    .values({ id: 1, name: "Support Desk", supportEmail: admin?.email ?? "support@example.com", timezone: "Asia/Karachi (UTC+05:00)" })
-    .onConflictDoNothing();
-  await database.insert(t.organizations).values({ name: "Independent Customers", domain: "—" }).onConflictDoNothing();
-  await database.insert(t.departments).values({ name: "General Support", isPublic: true }).onConflictDoNothing();
-  await database.insert(t.slaPlans).values({ name: "Standard SLA", graceHours: 48, notes: "Default response window." }).onConflictDoNothing();
-
-  const [dept] = await database.select({ id: t.departments.id }).from(t.departments).orderBy(t.departments.id).limit(1);
-  const [plan] = await database.select({ id: t.slaPlans.id }).from(t.slaPlans).orderBy(t.slaPlans.id).limit(1);
-  await database.insert(t.helpTopics).values({ name: "General Enquiry", departmentId: dept.id, slaPlanId: plan.id }).onConflictDoNothing();
-
+async function ensureSuperAdmin(database: Database, fallback?: { name: string; email: string; password: string }) {
+  const admin = superAdminFromEnv() ?? fallback;
   if (!admin) {
-    log("no ADMIN_EMAIL / ADMIN_PASSWORD set — no admin created (the first sign-up will be a regular agent)");
+    log("no SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD set — no super admin created");
     return;
   }
-  const credential = hashPassword(admin.password);
-  const [row] = await database
-    .insert(t.staff)
-    .values({
-      name: admin.name,
-      email: admin.email,
-      departmentId: dept.id,
-      role: "Department Manager",
-      isAdmin: true,
-      passwordHash: credential.hash,
-      passwordSalt: credential.salt,
-    })
-    .onConflictDoNothing()
-    .returning({ id: t.staff.id });
-  if (row) await database.update(t.departments).set({ managerId: row.id }).where(sql`${t.departments.id} = ${dept.id}`);
-  log(row ? `created admin ${admin.email}` : `admin ${admin.email} already exists`);
+  const [agent] = await database.select({ id: t.staff.id }).from(t.staff).where(eq(t.staff.email, admin.email)).limit(1);
+  if (agent) throw new Error(`SUPER_ADMIN_EMAIL ${admin.email} already belongs to an agent — use a different email`);
+
+  const [existing] = await database.select().from(t.superAdmins).where(eq(t.superAdmins.email, admin.email)).limit(1);
+  if (!existing) {
+    const credential = hashPassword(admin.password);
+    await database.insert(t.superAdmins).values({ name: admin.name, email: admin.email, passwordHash: credential.hash, passwordSalt: credential.salt });
+    return log(`created super admin ${admin.email}`);
+  }
+  const samePassword = verifyPassword(admin.password, { salt: existing.passwordSalt, hash: existing.passwordHash });
+  const credential = samePassword ? { hash: existing.passwordHash, salt: existing.passwordSalt } : hashPassword(admin.password);
+  await database
+    .update(t.superAdmins)
+    .set({ name: admin.name, passwordHash: credential.hash, passwordSalt: credential.salt })
+    .where(eq(t.superAdmins.id, existing.id));
+  log(samePassword ? `super admin ${admin.email} is up to date` : `updated the password of super admin ${admin.email}`);
 }
+
+/** Local/preview demo: a platform owner anyone can sign in as. */
+const DEMO_SUPER_ADMIN = { name: "Platform Owner", email: "owner@threadline.io", password: DEMO_PASSWORD };
+const DEMO_TENANT_ID = 1;
 
 /** Vercel production starts clean unless SEED_DEMO=1; everywhere else gets demo data. */
 const wantsDemoData = () => process.env.SEED_DEMO === "1" || process.env.VERCEL_ENV !== "production";
@@ -126,13 +120,22 @@ async function seed(database: Database) {
     return match.id;
   };
   const credential = hashPassword(DEMO_PASSWORD, DEMO_SALT);
+  const tenantId = DEMO_TENANT_ID;
 
-  await database.insert(t.organizations).values(orgs);
+  await database.insert(t.tenants).values({
+    id: tenantId,
+    name: "Threadline Support Desk",
+    supportEmail: "support@threadline.io",
+    timezone: "Asia/Karachi (UTC+05:00)",
+    plan: "Business",
+  });
+  await database.insert(t.organizations).values(orgs.map((o) => ({ ...o, tenantId })));
   // Departments first without managers (staff reference departments), then backfill.
-  await database.insert(t.departments).values(depts.map((d) => ({ id: d.id, name: d.name, isPublic: d.isPublic })));
+  await database.insert(t.departments).values(depts.map((d) => ({ id: d.id, tenantId, name: d.name, isPublic: d.isPublic })));
   await database.insert(t.staff).values(
     agents.map((a) => ({
       id: a.id,
+      tenantId,
       name: a.name,
       email: a.email,
       departmentId: id(depts, a.dept),
@@ -149,17 +152,17 @@ async function seed(database: Database) {
     await database.update(t.departments).set({ managerId: id(agents, d.manager) }).where(sql`${t.departments.id} = ${d.id}`);
   }
 
-  await database.insert(t.teams).values(teams().map((team) => ({ id: team.id, name: team.name, leadId: id(agents, team.lead), notes: team.notes })));
+  await database.insert(t.teams).values(teams().map((team) => ({ id: team.id, tenantId, name: team.name, leadId: id(agents, team.lead), notes: team.notes })));
   await database.insert(t.teamMembers).values(teams().flatMap((team) => team.memberIds.map((staffId) => ({ teamId: team.id, staffId }))));
-  await database.insert(t.slaPlans).values(plans);
+  await database.insert(t.slaPlans).values(plans.map((plan) => ({ ...plan, tenantId })));
   await database.insert(t.helpTopics).values(
-    topics.map((topic) => ({ id: topic.id, name: topic.name, departmentId: id(depts, topic.dept), slaPlanId: id(plans, topic.sla) })),
+    topics.map((topic) => ({ id: topic.id, tenantId, name: topic.name, departmentId: id(depts, topic.dept), slaPlanId: id(plans, topic.sla) })),
   );
-  await database.insert(t.faqCategories).values(categories);
-  await database.insert(t.articles).values(faqArticles().map(({ category, ...a }) => ({ ...a, categoryId: id(categories, category) })));
-  await database.insert(t.cannedResponses).values(cannedResponses().map(({ dept, ...c }) => ({ ...c, departmentId: id(depts, dept) })));
+  await database.insert(t.faqCategories).values(categories.map((c) => ({ ...c, tenantId })));
+  await database.insert(t.articles).values(faqArticles().map(({ category, ...a }) => ({ ...a, tenantId, categoryId: id(categories, category) })));
+  await database.insert(t.cannedResponses).values(cannedResponses().map(({ dept, ...c }) => ({ ...c, tenantId, departmentId: id(depts, dept) })));
   await database.insert(t.customers).values(
-    customers.map((c) => ({ ...c, organizationId: id(orgs, c.organization), joined: new Date(c.joined) })),
+    customers.map((c) => ({ ...c, tenantId, organizationId: id(orgs, c.organization), joined: new Date(c.joined) })),
   );
 
   const date = (value: string | null) => (value ? new Date(value) : null);
@@ -167,6 +170,7 @@ async function seed(database: Database) {
     (rows) => database.insert(t.tickets).values(rows),
     tickets.map((ticket) => ({
       id: ticket.id,
+      tenantId,
       subject: ticket.subject,
       excerpt: ticket.excerpt,
       status: ticket.status,
@@ -211,19 +215,41 @@ async function seed(database: Database) {
         createdAt: new Date(ticket.created),
       })),
   );
-  await database.insert(t.orgSettings).values({
-    id: 1,
-    name: "Threadline Support Desk",
-    supportEmail: "support@threadline.io",
-    timezone: "Asia/Karachi (UTC+05:00)",
-    plan: "Business",
-  });
-
   // Explicit ids were inserted, so move each sequence past them.
-  for (const table of ["organizations", "departments", "staff", "teams", "sla_plans", "help_topics", "faq_categories", "articles", "canned_responses", "customers", "tickets"]) {
+  for (const table of ["tenants", "organizations", "departments", "staff", "teams", "sla_plans", "help_topics", "faq_categories", "articles", "canned_responses", "customers", "tickets"]) {
     await database.execute(sql.raw(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), (SELECT MAX(id) FROM "${table}"))`));
   }
   log(`seeded ${agents.length} agents, ${customers.length} customers, ${tickets.length} tickets`);
+
+  await seedSecondTenant(database, credential);
+}
+
+/** A small second organization, so you can check that tenants never see each other's data. */
+async function seedSecondTenant(database: Database, credential: { hash: string; salt: string }) {
+  const tenantId = await provisionTenant(database, {
+    name: "Northwind Traders",
+    supportEmail: "help@northwind.test",
+    timezone: "UTC (UTC+00:00)",
+    plan: "Starter",
+    maxAgents: 5,
+  });
+  const dept = (await defaultDepartment(database, tenantId))!;
+  const [admin] = await database
+    .insert(t.staff)
+    .values({
+      tenantId,
+      name: "Nadia Brooks",
+      email: "nadia@northwind.test",
+      departmentId: dept.id,
+      role: "Department Manager",
+      isAdmin: true,
+      avatarColor: "bg-emerald-500",
+      passwordHash: credential.hash,
+      passwordSalt: credential.salt,
+    })
+    .returning({ id: t.staff.id });
+  await claimDefaultDepartment(database, tenantId, admin.id);
+  log("seeded second organization Northwind Traders (nadia@northwind.test)");
 }
 
 async function main() {
@@ -237,14 +263,18 @@ async function main() {
       if (force) await wipe();
       else if (!(await isEmpty())) return log("database already has data — skipping seed (use --force to replace it)");
       await seed(db);
+      await ensureSuperAdmin(db, DEMO_SUPER_ADMIN);
       break;
-    case "setup":
+    case "setup": {
       await migrate();
-      if (process.env.SKIP_SEED === "1") return log("SKIP_SEED=1 — not seeding");
-      if (!(await isEmpty())) log("database already has data — skipping seed");
-      else if (wantsDemoData()) await seed(db);
-      else await bootstrap(db);
+      const demo = wantsDemoData();
+      if (process.env.SKIP_SEED === "1") log("SKIP_SEED=1 — not seeding");
+      else if (!(await isEmpty())) log("database already has data — skipping seed");
+      else if (demo) await seed(db);
+      else log("empty production database — sign in as the super admin and create your first organization");
+      await ensureSuperAdmin(db, demo ? DEMO_SUPER_ADMIN : undefined);
       break;
+    }
     case "reset":
       // One statement per call: prepared statements (PGlite, Neon HTTP) reject multi-statement strings.
       for (const statement of ["DROP SCHEMA IF EXISTS drizzle CASCADE", "DROP SCHEMA public CASCADE", "CREATE SCHEMA public"]) {
@@ -252,15 +282,15 @@ async function main() {
       }
       await migrate();
       await seed(db);
+      await ensureSuperAdmin(db, DEMO_SUPER_ADMIN);
       break;
     case "clean":
-      if (!force) throw new Error("This deletes every ticket, customer and agent. Re-run with --force to confirm.");
+      if (!force) throw new Error("This deletes every organization with all its tickets, customers and agents. Re-run with --force to confirm.");
       await migrate();
       await wipe();
-      await bootstrap(db);
-      // Without ADMIN_* here (e.g. they're Vercel secrets), no staff exist yet, so the
-      // next production build's `setup` sees an empty database and creates the admin.
-      log(adminFromEnv() ? "database cleaned — sign in with ADMIN_EMAIL / ADMIN_PASSWORD" : "database cleaned — redeploy on Vercel to create the admin from ADMIN_EMAIL / ADMIN_PASSWORD");
+      await ensureSuperAdmin(db);
+      // Without SUPER_ADMIN_* here (e.g. they're Vercel secrets), the next build's `setup` creates the super admin.
+      log(superAdminFromEnv() ? "database cleaned — sign in with SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD" : "database cleaned — redeploy on Vercel to create the super admin from SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD");
       break;
     default:
       console.error("Usage: tsx scripts/db.ts <migrate|seed|setup|reset|clean> [--force]");

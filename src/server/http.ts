@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { SessionUser } from "@/types";
-import { requireUser } from "./auth";
+import type { PlatformUser, SessionUser } from "@/types";
+import { requirePlatformUser, requireUser } from "./auth";
 import { HttpError } from "./errors";
 import type { Resource } from "./resource";
+import { withTenant } from "./tenant";
 
 export function ok<T>(data: T, init?: ResponseInit) {
   return NextResponse.json({ data }, init);
@@ -22,20 +23,43 @@ export async function readJson(request: Request): Promise<unknown> {
 
 type Context<P> = { params: Promise<P> };
 type Handler<P> = (args: { request: NextRequest; params: P; user: SessionUser }) => Promise<Response> | Response;
+type PlatformHandler<P> = (args: { request: NextRequest; params: P; user: PlatformUser }) => Promise<Response> | Response;
 
-/** Wraps a route handler with authentication and uniform error responses. */
+function errorResponse(error: unknown) {
+  if (error instanceof HttpError) {
+    return NextResponse.json({ message: error.message, errors: error.errors }, { status: error.status });
+  }
+  console.error(error);
+  return NextResponse.json({ message: "Something went wrong on our side" }, { status: 500 });
+}
+
+/**
+ * Wraps a route handler with authentication and uniform error responses.
+ * Authenticated handlers run inside the agent's tenant, so every query they
+ * make is limited to that organization's data.
+ */
 export function route<P = Record<string, never>>(handler: Handler<P>, { auth = true } = {}) {
   return async (request: NextRequest, context: Context<P>) => {
     try {
-      const user = auth ? await requireUser() : (null as unknown as SessionUser);
+      const params = context?.params ? await context.params : ({} as P);
+      if (!auth) return await handler({ request, params, user: null as unknown as SessionUser });
+      const user = await requireUser();
+      return await withTenant(user.tenantId, () => handler({ request, params, user }));
+    } catch (error) {
+      return errorResponse(error);
+    }
+  };
+}
+
+/** Route handler for the platform console; only super admins get through. */
+export function platformRoute<P = Record<string, never>>(handler: PlatformHandler<P>) {
+  return async (request: NextRequest, context: Context<P>) => {
+    try {
+      const user = await requirePlatformUser();
       const params = context?.params ? await context.params : ({} as P);
       return await handler({ request, params, user });
     } catch (error) {
-      if (error instanceof HttpError) {
-        return NextResponse.json({ message: error.message, errors: error.errors }, { status: error.status });
-      }
-      console.error(error);
-      return NextResponse.json({ message: "Something went wrong on our side" }, { status: 500 });
+      return errorResponse(error);
     }
   };
 }

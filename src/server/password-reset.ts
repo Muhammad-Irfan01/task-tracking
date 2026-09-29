@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "./db";
-import { resetTokens, staff } from "./db/schema";
+import { resetTokens, staff, tenants } from "./db/schema";
 
 const RESET_TTL_MS = 30 * 60_000;
 const INVITE_TTL_MS = 72 * 60 * 60_000;
@@ -28,9 +28,16 @@ export async function revokeResetTokens(staffId: number) {
 /** Looks a token up without consuming it; expired tokens and inactive accounts don't match. */
 export async function findResetToken(token: string) {
   const [row] = await db
-    .select({ staffId: resetTokens.staffId, purpose: resetTokens.purpose, email: staff.email, name: staff.name })
+    .select({
+      staffId: resetTokens.staffId,
+      purpose: resetTokens.purpose,
+      email: staff.email,
+      name: staff.name,
+      tenantStatus: tenants.status,
+    })
     .from(resetTokens)
     .innerJoin(staff, eq(staff.id, resetTokens.staffId))
+    .innerJoin(tenants, eq(tenants.id, staff.tenantId))
     .where(and(eq(resetTokens.tokenHash, digest(token)), gt(resetTokens.expiresAt, new Date()), eq(staff.active, true)));
   return row ?? null;
 }

@@ -7,34 +7,32 @@ import { Button, Input } from "@/components/ui";
 import { useZodForm } from "@/hooks/useZodForm";
 import { loginSchema } from "@/lib/schemas";
 import { authService } from "@/services";
-import { AUTH_LINK, AuthShell } from "./AuthShell";
+import { AuthShell } from "./AuthShell";
 
 export function LoginView({ next, notice }: { next: string; notice?: string }) {
   const router = useRouter();
   const form = useZodForm(loginSchema, { email: "", password: "" });
 
   const onSubmit = form.handleSubmit(async (credentials) => {
-    await authService.login(credentials);
-    router.replace(next);
+    const result = await authService.login(credentials);
+    // Super admins go to the platform console; `next` only applies inside a desk.
+    router.replace(result.kind === "platform" ? "/platform" : next.startsWith("/platform") ? "/" : next);
     router.refresh();
   });
 
   return (
     <AuthShell
       title="Sign in to your desk"
-      description="Use your agent account to continue."
+      description="Use the account your organization invited you with."
       footer={
         <>
-          <p>
-            New to Threadline?{" "}
-            <Link href="/signup" className={AUTH_LINK}>
-              Create an account
-            </Link>
-          </p>
-          <p className="mt-3 text-xs leading-relaxed text-ink-900/45 dark:text-paper-100/45">
-            Demo workspace — any seeded agent email (e.g. <span className="font-mono">amara.chen@threadline.io</span>) with
-            password <span className="font-mono">threadline</span>.
-          </p>
+          <p>Need an account? Ask your organization&apos;s administrator to invite you.</p>
+          {process.env.NODE_ENV !== "production" && (
+            <p className="mt-3 text-xs leading-relaxed text-ink-900/45 dark:text-paper-100/45">
+              Local demo — any seeded agent (e.g. <span className="font-mono">amara.chen@threadline.io</span>) or the platform owner{" "}
+              <span className="font-mono">owner@threadline.io</span>, password <span className="font-mono">threadline</span>.
+            </p>
+          )}
         </>
       }
     >

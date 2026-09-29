@@ -130,16 +130,6 @@ export const passwordSchema = z
   })
   .refine((v) => v.next === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
 
-export const signupSchema = z
-  .object({
-    name: required("Full name"),
-    email,
-    dept: required("Department"),
-    password: newPassword,
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
-
 export const forgotPasswordSchema = z.object({ email });
 
 export const resetPasswordSchema = z
@@ -163,6 +153,38 @@ export const orgSettingsSchema = z.object({
   timezone: required("Time zone"),
 });
 
+export const TENANT_STATUS_VALUES = ["Active", "Suspended"] as const;
+
+/** Blank means unlimited; forms send NaN for an empty number field. */
+const seatLimit = z
+  .number("Enter a number of seats")
+  .int("Use a whole number")
+  .min(1, "At least 1 seat")
+  .max(10_000, "At most 10,000 seats")
+  .nullable()
+  .or(z.nan().transform(() => null));
+
+/** A client organization on the platform, as the super admin edits it. */
+export const tenantSchema = z.object({
+  name: required("Organization name"),
+  supportEmail: email,
+  timezone: required("Time zone"),
+  plan: required("Plan", 60),
+  maxAgents: seatLimit,
+  status: z.enum(TENANT_STATUS_VALUES),
+});
+
+/** New organization plus its first administrator, who gets an invite email. */
+export const tenantCreateSchema = tenantSchema.omit({ status: true }).extend({
+  adminName: required("Admin name"),
+  adminEmail: email,
+});
+
+export const tenantAdminSchema = z.object({
+  name: required("Name"),
+  email,
+});
+
 export type TicketCreateInput = z.infer<typeof ticketCreateSchema>;
 export type TicketUpdateInput = z.infer<typeof ticketUpdateSchema>;
 export type CustomerInput = z.infer<typeof customerSchema>;
@@ -178,10 +200,12 @@ export type CannedResponseInput = z.infer<typeof cannedResponseSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ProfileInput = z.infer<typeof profileSchema>;
 export type PasswordInput = z.infer<typeof passwordSchema>;
-export type SignupInput = z.infer<typeof signupSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type OrgSettingsInput = z.infer<typeof orgSettingsSchema>;
+export type TenantInput = z.infer<typeof tenantSchema>;
+export type TenantCreateInput = z.infer<typeof tenantCreateSchema>;
+export type TenantAdminInput = z.infer<typeof tenantAdminSchema>;
 
 export type FieldErrors = Record<string, string>;
 

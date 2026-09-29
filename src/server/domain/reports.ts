@@ -3,6 +3,7 @@ import { TICKET_PRIORITIES } from "@/lib/constants";
 import type { Metric, ReportRange, ReportSummary, VolumePoint } from "@/types";
 import { db } from "../db";
 import { departments, messages, staff, tickets } from "../db/schema";
+import { inTenant } from "../tenant";
 import { countSql, q, ticketIsOpen, ticketIsOpenQ, ticketIsOverdue } from "./shared";
 
 const HOUR = 3_600_000;
@@ -82,7 +83,7 @@ export async function buildReport(range: ReportRange): Promise<ReportSummary> {
         staffReplies: sql<number>`(select count(*)::int from ${messages} where ${q(messages.ticketId)} = ${q(tickets.id)} and ${q(messages.isStaff)})`,
       })
       .from(tickets)
-      .where(or(gte(tickets.createdAt, since), gte(tickets.resolvedAt, since))),
+      .where(and(inTenant(tickets.tenantId), or(gte(tickets.createdAt, since), gte(tickets.resolvedAt, since)))),
     db
       .select({
         open: countSql,
@@ -90,13 +91,14 @@ export async function buildReport(range: ReportRange): Promise<ReportSummary> {
         atRisk: sql<number>`count(*) filter (where not ${ticketIsOverdue} and ${tickets.dueAt} < now() + interval '12 hours')::int`,
       })
       .from(tickets)
-      .where(ticketIsOpen),
+      .where(and(inTenant(tickets.tenantId), ticketIsOpen)),
     db
       .select({
         name: departments.name,
         value: sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.departmentId)} = ${q(departments.id)} and ${ticketIsOpenQ})`,
       })
       .from(departments)
+      .where(inTenant(departments.tenantId))
       .orderBy(asc(departments.id)),
     db
       .select({
@@ -106,7 +108,7 @@ export async function buildReport(range: ReportRange): Promise<ReportSummary> {
         open: sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.assigneeId)} = ${q(staff.id)} and ${ticketIsOpenQ})`,
       })
       .from(staff)
-      .where(and(eq(staff.active, true))),
+      .where(and(inTenant(staff.tenantId), eq(staff.active, true))),
   ]);
 
   const rows: WindowRow[] = windowRows.map((r) => ({

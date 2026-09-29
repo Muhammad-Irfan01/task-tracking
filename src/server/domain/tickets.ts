@@ -15,9 +15,11 @@ import {
   staff,
   tickets,
 } from "../db/schema";
+import { INDEPENDENT_ORG } from "../db/provision";
 import { ticketNumber } from "../db/seed/people";
 import { badRequest, invalid, notFound } from "../errors";
 import { parseId, References } from "../resource";
+import { currentTenant, inTenant } from "../tenant";
 import { attachmentLimits, blobMetadata, blobStorageEnabled, deleteBlobs, ticketBlobPrefix } from "../storage";
 import { notify } from "./notifications";
 import {
@@ -34,7 +36,6 @@ import {
 } from "./shared";
 
 const HOUR = 3_600_000;
-const INDEPENDENT_ORG = "Independent Customers";
 
 // ---------------------------------------------------------------- reads
 
@@ -68,7 +69,7 @@ function ticketQuery(where?: SQL) {
     .innerJoin(customers, eq(customers.id, tickets.customerId))
     .innerJoin(organizations, eq(organizations.id, customers.organizationId))
     .leftJoin(staff, eq(staff.id, tickets.assigneeId))
-    .where(where);
+    .where(and(inTenant(tickets.tenantId), where));
 }
 
 type TicketRow = Awaited<ReturnType<typeof ticketQuery>>[number];
@@ -101,14 +102,14 @@ export async function getTicket(rawId: string | number) {
 /** Lightweight lookup (no joins) used by metadata and mutations. */
 async function ticketRecord(rawId: string | number) {
   const id = parseId(rawId);
-  const [row] = id ? await db.select().from(tickets).where(eq(tickets.id, id)) : [];
+  const [row] = id ? await db.select().from(tickets).where(and(eq(tickets.id, id), inTenant(tickets.tenantId))) : [];
   if (!row) throw notFound("Ticket");
   return row;
 }
 
 export async function ticketTitle(rawId: string) {
   const id = parseId(rawId);
-  const [row] = id ? await db.select({ id: tickets.id, subject: tickets.subject }).from(tickets).where(eq(tickets.id, id)) : [];
+  const [row] = id ? await db.select({ id: tickets.id, subject: tickets.subject }).from(tickets).where(and(eq(tickets.id, id), inTenant(tickets.tenantId))) : [];
   return row ? `${ticketNumber(row.id)} · ${row.subject}` : null;
 }
 
@@ -157,7 +158,7 @@ export async function getThread(rawId: string | number): Promise<TicketMessage[]
 /** Least-loaded available agent in the department, falling back to anyone available. */
 async function autoAssign(departmentId: number) {
   const openCount = sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.assigneeId)} = ${q(staff.id)} and ${ticketIsOpenQ})`;
-  const available = and(eq(staff.active, true), eq(staff.onVacation, false));
+  const available = and(inTenant(staff.tenantId), eq(staff.active, true), eq(staff.onVacation, false));
   const pick = (where: SQL | undefined) =>
     db.select({ id: staff.id, name: staff.name }).from(staff).where(where).orderBy(asc(openCount), asc(staff.id)).limit(1);
   const [inDept] = await pick(and(available, eq(staff.departmentId, departmentId)));
@@ -192,7 +193,7 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
     if (!organizationId) throw badRequest(`The "${INDEPENDENT_ORG}" organization is missing`);
     [customer] = await db
       .insert(customers)
-      .values({ name: input.customerName, email: input.customerEmail, organizationId })
+      .values({ name: input.customerName, email: input.customerEmail, organizationId, tenantId: currentTenant() })
       .onConflictDoNothing()
       .returning();
     customer ??= await customerByEmail(input.customerEmail);
@@ -203,6 +204,7 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
   const [ticket] = await db
     .insert(tickets)
     .values({
+      tenantId: currentTenant(),
       subject: input.subject,
       excerpt: input.message,
       priority: input.priority,
@@ -370,7 +372,14 @@ export async function addReply(rawId: string, body: string, files: File[], uploa
 
 export async function getAttachment(id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound("Attachment");
-  const [file] = await db.select().from(attachments).where(eq(attachments.id, id));
+  // Joined through the ticket so one organization can never read another's files.
+  const [row] = await db
+    .select({ file: attachments })
+    .from(attachments)
+    .innerJoin(messages, eq(messages.id, attachments.messageId))
+    .innerJoin(tickets, eq(tickets.id, messages.ticketId))
+    .where(and(eq(attachments.id, id), inTenant(tickets.tenantId)));
+  const file = row?.file;
   if (!file) throw notFound("Attachment");
   return file;
 }

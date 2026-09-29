@@ -24,7 +24,8 @@ export const isForeignKeyViolation = (error: unknown) => pgError(error)?.code ==
 export function violatedColumn(error: unknown) {
   const pg = pgError(error);
   // Detail looks like `Key (email)=(x)` or, for expression indexes, `Key (lower(name))=(x)`.
-  const fromDetail = pg?.detail?.match(/Key \((?:lower\()?([a-z_]+)/)?.[1];
+  // Per-tenant indexes lead with tenant_id, e.g. `Key (tenant_id, lower(name))=(1, x)`.
+  const fromDetail = pg?.detail?.match(/Key \((?:tenant_id, )?(?:lower\()?([a-z_]+)/)?.[1];
   const constraint = pg?.constraint ?? pg?.constraint_name;
   return fromDetail ?? constraint?.match(/_([a-z]+)(?:_lower)?_unique$/)?.[1];
 }

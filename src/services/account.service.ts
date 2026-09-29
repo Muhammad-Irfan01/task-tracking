@@ -5,10 +5,10 @@ import type {
   PasswordInput,
   ProfileInput,
   ResetPasswordInput,
-  SignupInput,
 } from "@/lib/schemas";
 import type {
   AppNotification,
+  LoginResult,
   OrgSettings,
   ReportRange,
   ReportSummary,
@@ -19,9 +19,8 @@ import type {
 import { apiClient, unwrap } from "./api-client";
 
 export const authService = {
-  login: (input: LoginInput) => unwrap<SessionUser>(apiClient.post("/auth/login", input)),
+  login: (input: LoginInput) => unwrap<LoginResult>(apiClient.post("/auth/login", input)),
   logout: () => unwrap<{ signedOut: boolean }>(apiClient.post("/auth/logout")),
-  signup: (input: SignupInput) => unwrap<SessionUser>(apiClient.post("/auth/signup", input)),
   forgotPassword: (input: ForgotPasswordInput) =>
     unwrap<{ devResetUrl?: string }>(apiClient.post("/auth/forgot-password", input)),
   resetPassword: (input: ResetPasswordInput) => unwrap<SessionUser>(apiClient.post("/auth/reset-password", input)),

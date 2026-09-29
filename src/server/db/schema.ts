@@ -15,9 +15,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-/** Case-insensitive uniqueness ("Acme" and "acme" collide), matching how people read names. */
-const uniqueLower = (table: string, column: AnyPgColumn) =>
-  uniqueIndex(`${table}_${column.name}_lower_unique`).on(sql`lower(${column})`);
+/**
+ * Case-insensitive uniqueness within one tenant ("Acme" and "acme" collide),
+ * matching how people read names. Different tenants may reuse a name.
+ */
+const uniqueLower = (table: string, tenant: AnyPgColumn, column: AnyPgColumn) =>
+  uniqueIndex(`${table}_${column.name}_lower_unique`).on(tenant, sql`lower(${column})`);
 
 /**
  * Relational schema. Entities reference each other by id, so renames never need
@@ -34,23 +37,60 @@ const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array | strin
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 
+/**
+ * A client organization of the platform (a separate, isolated help desk).
+ * Every tenant-owned row carries `tenant_id`; deleting a tenant deletes its data.
+ */
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    supportEmail: text("support_email").notNull(),
+    timezone: text("timezone").notNull().default("UTC (UTC+00:00)"),
+    plan: text("plan").notNull().default("Business"),
+    /** Maximum active agents; null means unlimited. */
+    maxAgents: integer("max_agents"),
+    status: text("status", { enum: ["Active", "Suspended"] }).notNull().default("Active"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("tenants_name_lower_unique").on(sql`lower(${t.name})`)],
+);
+
+const tenantId = () =>
+  integer("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" });
+
+/** Platform operators. Not tied to a tenant; they manage tenants from /platform. */
+export const superAdmins = pgTable("super_admins", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  createdAt: createdAt(),
+});
+
 export const organizations = pgTable(
   "organizations",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     domain: text("domain").notNull(),
     status: text("status", { enum: ["Active", "Inactive"] }).notNull().default("Active"),
   },
-  (t) => [uniqueLower("organizations", t.name)],
+  (t) => [uniqueLower("organizations", t.tenantId, t.name)],
 );
 
 export const customers = pgTable(
   "customers",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
-    email: text("email").notNull().unique(),
+    email: text("email").notNull(),
     phone: text("phone").notNull().default(""),
     organizationId: integer("organization_id")
       .notNull()
@@ -58,25 +98,30 @@ export const customers = pgTable(
     status: text("status", { enum: ["Active", "Locked", "Inactive"] }).notNull().default("Active"),
     joined: createdAt(),
   },
-  (t) => [index("customers_org_idx").on(t.organizationId)],
+  (t) => [
+    uniqueIndex("customers_email_unique").on(t.tenantId, t.email),
+    index("customers_org_idx").on(t.organizationId),
+  ],
 );
 
 export const departments = pgTable(
   "departments",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     // Nullable to break the departments ↔ staff cycle while seeding.
     managerId: integer("manager_id").references((): AnyPgColumn => staff.id, { onDelete: "set null" }),
     isPublic: boolean("is_public").notNull().default(true),
   },
-  (t) => [uniqueLower("departments", t.name)],
+  (t) => [uniqueLower("departments", t.tenantId, t.name)],
 );
 
 export const staff = pgTable(
   "staff",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     email: text("email").notNull().unique(),
     departmentId: integer("department_id")
@@ -92,20 +137,21 @@ export const staff = pgTable(
     passwordSalt: text("password_salt"),
     createdAt: createdAt(),
   },
-  (t) => [index("staff_dept_idx").on(t.departmentId)],
+  (t) => [index("staff_dept_idx").on(t.departmentId), index("staff_tenant_idx").on(t.tenantId)],
 );
 
 export const teams = pgTable(
   "teams",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     leadId: integer("lead_id")
       .notNull()
       .references(() => staff.id, { onDelete: "restrict" }),
     notes: text("notes").notNull().default(""),
   },
-  (t) => [uniqueLower("teams", t.name)],
+  (t) => [uniqueLower("teams", t.tenantId, t.name)],
 );
 
 export const teamMembers = pgTable(
@@ -125,17 +171,19 @@ export const slaPlans = pgTable(
   "sla_plans",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     graceHours: integer("grace_hours").notNull(),
     notes: text("notes").notNull().default(""),
   },
-  (t) => [uniqueLower("sla_plans", t.name)],
+  (t) => [uniqueLower("sla_plans", t.tenantId, t.name)],
 );
 
 export const helpTopics = pgTable(
   "help_topics",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
     departmentId: integer("department_id")
       .notNull()
@@ -144,22 +192,24 @@ export const helpTopics = pgTable(
       .notNull()
       .references(() => slaPlans.id, { onDelete: "restrict" }),
   },
-  (t) => [uniqueLower("help_topics", t.name)],
+  (t) => [uniqueLower("help_topics", t.tenantId, t.name)],
 );
 
 export const faqCategories = pgTable(
   "faq_categories",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     name: text("name").notNull(),
   },
-  (t) => [uniqueLower("faq_categories", t.name)],
+  (t) => [uniqueLower("faq_categories", t.tenantId, t.name)],
 );
 
 export const articles = pgTable(
   "articles",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     categoryId: integer("category_id")
       .notNull()
       .references(() => faqCategories.id, { onDelete: "restrict" }),
@@ -168,13 +218,14 @@ export const articles = pgTable(
     published: boolean("published").notNull().default(false),
     views: integer("views").notNull().default(0),
   },
-  (t) => [uniqueLower("articles", t.question), index("articles_category_idx").on(t.categoryId)],
+  (t) => [uniqueLower("articles", t.tenantId, t.question), index("articles_category_idx").on(t.categoryId)],
 );
 
 export const cannedResponses = pgTable(
   "canned_responses",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     title: text("title").notNull(),
     departmentId: integer("department_id")
       .notNull()
@@ -182,13 +233,14 @@ export const cannedResponses = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     body: text("body").notNull(),
   },
-  (t) => [uniqueLower("canned_responses", t.title)],
+  (t) => [uniqueLower("canned_responses", t.tenantId, t.title)],
 );
 
 export const tickets = pgTable(
   "tickets",
   {
     id: serial("id").primaryKey(),
+    tenantId: tenantId(),
     subject: text("subject").notNull(),
     excerpt: text("excerpt").notNull(),
     status: text("status", { enum: ["Open", "In Progress", "On Hold", "Resolved", "Closed", "Overdue"] })
@@ -215,7 +267,7 @@ export const tickets = pgTable(
     rating: integer("rating"),
   },
   (t) => [
-    index("tickets_updated_idx").on(t.updatedAt),
+    index("tickets_tenant_updated_idx").on(t.tenantId, t.updatedAt),
     index("tickets_assignee_idx").on(t.assigneeId),
     index("tickets_customer_idx").on(t.customerId),
     index("tickets_dept_idx").on(t.departmentId),
@@ -308,14 +360,6 @@ export const resetTokens = pgTable("reset_tokens", {
     .references(() => staff.id, { onDelete: "cascade" }),
   purpose: text("purpose", { enum: ["reset", "invite"] }).notNull(),
   expiresAt: ts("expires_at").notNull(),
-});
-
-export const orgSettings = pgTable("org_settings", {
-  id: integer("id").primaryKey().default(1),
-  name: text("name").notNull(),
-  supportEmail: text("support_email").notNull(),
-  timezone: text("timezone").notNull(),
-  plan: text("plan").notNull().default("Business"),
 });
 
 /** Fixed-window counters; shared by every serverless instance. */

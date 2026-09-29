@@ -6,17 +6,24 @@ import { usePathname } from "next/navigation";
 import { isNavActive, NAV_SECTIONS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useReport } from "@/hooks/useReport";
+import { useCurrentUser } from "@/components/providers/SessionProvider";
 import { Logo } from "./Logo";
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const user = useCurrentUser();
   const { data: report } = useReport(7);
   const overdue = report?.overdueTickets ?? 0;
   const dueSoon = report?.atRiskTickets ?? 0;
 
   return (
     <div className="flex h-full flex-col gap-6 py-6">
-      <Logo />
+      <div>
+        <Logo />
+        <p className="mt-2 truncate px-2 text-xs font-medium text-ink-900/45 dark:text-paper-100/45" title={user.tenantName}>
+          {user.tenantName}
+        </p>
+      </div>
       <nav className="flex-1 space-y-6 overflow-y-auto px-2">
         {NAV_SECTIONS.map((section) => (
           <div key={section.label}>

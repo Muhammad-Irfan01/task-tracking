@@ -6,6 +6,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { useCurrentUser, useSession } from "@/components/providers/SessionProvider";
 import { Button, Card, Input, PageHeader, Skeleton, Switch, Tabs } from "@/components/ui";
 import { useZodForm } from "@/hooks/useZodForm";
+import { TIMEZONE_OPTIONS } from "@/lib/constants";
 import { orgSettingsSchema, passwordSchema, profileSchema } from "@/lib/schemas";
 import { accountService, errorMessage } from "@/services";
 import { refreshLoadedStores, toast, useThemeStore } from "@/store";
@@ -175,7 +176,8 @@ function OrganizationForm({ settings, canEdit, onSaved }: { settings: OrgSetting
         <div>
           <p className="text-sm font-medium text-ink-900 dark:text-paper-100">{settings.name}</p>
           <p className="text-xs text-ink-900/50 dark:text-paper-100/50">
-            Plan: {settings.plan} · {settings.seatsUsed} seats used
+            Plan: {settings.plan} · {settings.seatsUsed}
+            {settings.maxAgents === null ? "" : ` of ${settings.maxAgents}`} seats used
           </p>
         </div>
       </div>
@@ -184,7 +186,7 @@ function OrganizationForm({ settings, canEdit, onSaved }: { settings: OrgSetting
         <Input label="Support email" type="email" {...form.field("supportEmail")} />
         <Input label="Time zone" list="timezones" {...form.field("timezone")} />
         <datalist id="timezones">
-          {["UTC (UTC+00:00)", "Europe/London (UTC+00:00)", "Asia/Dubai (UTC+04:00)", "Asia/Karachi (UTC+05:00)", "America/New_York (UTC-05:00)"].map((tz) => (
+          {TIMEZONE_OPTIONS.map((tz) => (
             <option key={tz} value={tz} />
           ))}
         </datalist>

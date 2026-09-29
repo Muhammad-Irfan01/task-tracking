@@ -15,6 +15,20 @@
       "when": 1790592466587,
       "tag": "0001_attachment_blob_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790676505625,
+      "tag": "0002_multi_tenancy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790676507068,
+      "tag": "0003_drop_org_settings",
+      "breakpoints": true
     }
   ]
 }

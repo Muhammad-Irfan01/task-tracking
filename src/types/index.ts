@@ -175,6 +175,49 @@ export interface SessionUser {
   dept: string;
   isAdmin: boolean;
   avatarColor: string;
+  /** The client organization this agent belongs to. */
+  tenantId: number;
+  tenantName: string;
+}
+
+/** A platform operator (super admin) who manages client organizations. */
+export interface PlatformUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export type LoginResult = { kind: "staff"; user: SessionUser } | { kind: "platform"; user: PlatformUser };
+
+/** A client organization as seen from the platform console. */
+export interface Tenant {
+  id: number;
+  name: string;
+  supportEmail: string;
+  timezone: string;
+  plan: string;
+  maxAgents: number | null;
+  status: "Active" | "Suspended";
+  createdAt: string;
+  agents: number;
+  admins: number;
+  openTickets: number;
+  totalTickets: number;
+}
+
+export interface TenantMember {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  isAdmin: boolean;
+  active: boolean;
+  /** False until the invited person sets a password. */
+  hasPassword: boolean;
+}
+
+export interface TenantDetail extends Tenant {
+  members: TenantMember[];
 }
 
 export interface UserPreferences {
@@ -191,6 +234,8 @@ export interface OrgSettings {
   plan: string;
   /** Computed: active agents. */
   seatsUsed: number;
+  /** Seat limit set by the platform; null means unlimited. */
+  maxAgents: number | null;
 }
 
 export interface VolumePoint {

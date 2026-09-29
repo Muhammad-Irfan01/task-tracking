@@ -2,21 +2,20 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { SESSION_COOKIE } from "@/lib/constants";
+import { PLATFORM_COOKIE, SESSION_COOKIE } from "@/lib/constants";
 import {
   forgotPasswordSchema,
   loginSchema,
   passwordSchema,
   profileSchema,
   resetPasswordSchema,
-  signupSchema,
   toFieldErrors,
 } from "@/lib/schemas";
-import type { SessionUser } from "@/types";
+import type { LoginResult, PlatformUser, SessionUser } from "@/types";
 import { db } from "./db";
-import { departments, staff } from "./db/schema";
+import { departments, staff, superAdmins, tenants } from "./db/schema";
 import { agents } from "./domain/directory";
-import { invalid, unauthorized } from "./errors";
+import { forbidden, invalid, unauthorized } from "./errors";
 import { sendMail } from "./mail";
 import { appUrl, findResetToken, issueResetToken, revokeResetTokens } from "./password-reset";
 import { hashPassword, verifyPassword } from "./passwords";
@@ -46,9 +45,13 @@ function sessionSecret() {
 
 // ------------------------------------------------------------------ tokens
 
-/** Binding the signature to the password salt logs out other sessions on password change. */
-function sign(staffId: number, issuedAt: number, salt: string | null) {
-  return createHmac("sha256", sessionSecret()).update(`${staffId}.${issuedAt}.${salt ?? ""}`).digest("base64url");
+/**
+ * Binding the signature to the password salt logs out other sessions on password change.
+ * The scope keeps an agent token from ever verifying as a super-admin token with the same id.
+ */
+function sign(staffId: number, issuedAt: number, salt: string | null, scope: "staff" | "platform" = "staff") {
+  const payload = `${scope === "platform" ? "platform." : ""}${staffId}.${issuedAt}.${salt ?? ""}`;
+  return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
 }
 
 function parseToken(token: string | undefined) {
@@ -71,6 +74,9 @@ function signatureMatches(expected: string, actual: string) {
 
 const sessionColumns = {
   id: staff.id,
+  tenantId: staff.tenantId,
+  tenantName: tenants.name,
+  tenantStatus: tenants.status,
   name: staff.name,
   email: staff.email,
   role: staff.role,
@@ -87,6 +93,7 @@ async function findStaff(where: ReturnType<typeof eq>) {
     .select(sessionColumns)
     .from(staff)
     .innerJoin(departments, eq(departments.id, staff.departmentId))
+    .innerJoin(tenants, eq(tenants.id, staff.tenantId))
     .where(where)
     .limit(1);
   return row;
@@ -102,14 +109,19 @@ function toSessionUser(row: NonNullable<Awaited<ReturnType<typeof findStaff>>>):
     dept: row.dept,
     isAdmin: row.isAdmin,
     avatarColor: row.avatarColor,
+    tenantId: row.tenantId,
+    tenantName: row.tenantName,
   };
 }
 
-async function writeSessionCookie(staffId: number, salt: string | null) {
+async function writeSessionCookie(staffId: number, salt: string | null, scope: "staff" | "platform" = "staff") {
   const issuedAt = Math.floor(Date.now() / 1000);
-  (await cookies()).set({
-    name: SESSION_COOKIE,
-    value: `${staffId}.${issuedAt}.${sign(staffId, issuedAt, salt)}`,
+  const jar = await cookies();
+  // One identity per browser: signing in as one kind of user signs out the other.
+  jar.delete(scope === "staff" ? PLATFORM_COOKIE : SESSION_COOKIE);
+  jar.set({
+    name: scope === "staff" ? SESSION_COOKIE : PLATFORM_COOKIE,
+    value: `${staffId}.${issuedAt}.${sign(staffId, issuedAt, salt, scope)}`,
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -126,7 +138,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const token = parseToken((await cookies()).get(SESSION_COOKIE)?.value);
   if (!token) return null;
   const row = await findStaff(eq(staff.id, token.staffId));
-  if (!row?.active) return null;
+  if (!row?.active || row.tenantStatus !== "Active") return null;
   return signatureMatches(sign(row.id, token.issuedAt, row.passwordSalt), token.signature) ? toSessionUser(row) : null;
 });
 
@@ -144,23 +156,64 @@ async function setPassword(staffId: number, password: string) {
 
 // ------------------------------------------------------------------ sign in / out
 
-export async function login(raw: unknown, ip: string) {
+const SUSPENDED = "Your organization's account is suspended. Contact your provider.";
+
+/** Signs in an agent, or a super admin when the email belongs to one. */
+export async function login(raw: unknown, ip: string): Promise<LoginResult> {
   const parsed = loginSchema.safeParse(raw);
   if (!parsed.success) throw invalid(toFieldErrors(parsed.error));
   await rateLimit(`login:ip:${ip}`, 30, 15 * MINUTE);
   await rateLimit(`login:email:${parsed.data.email}`, 10, 15 * MINUTE);
+
+  const operator = await findSuperAdmin(eq(superAdmins.email, parsed.data.email));
+  if (operator) {
+    if (!verifyPassword(parsed.data.password, { salt: operator.passwordSalt, hash: operator.passwordHash })) {
+      throw invalid({ password: "Incorrect email or password" }, "Incorrect email or password");
+    }
+    await writeSessionCookie(operator.id, operator.passwordSalt, "platform");
+    return { kind: "platform", user: toPlatformUser(operator) };
+  }
 
   const row = await findStaff(eq(staff.email, parsed.data.email));
   if (!row || !verifyPassword(parsed.data.password, { salt: row.passwordSalt, hash: row.passwordHash })) {
     throw invalid({ password: "Incorrect email or password" }, "Incorrect email or password");
   }
   if (!row.active) throw invalid({ email: "This account has been deactivated" }, "Account deactivated");
+  if (row.tenantStatus !== "Active") throw invalid({ email: SUSPENDED }, SUSPENDED);
   await writeSessionCookie(row.id, row.passwordSalt);
-  return toSessionUser(row);
+  return { kind: "staff", user: toSessionUser(row) };
 }
 
 export async function logout() {
-  (await cookies()).delete(SESSION_COOKIE);
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE);
+  jar.delete(PLATFORM_COOKIE);
+}
+
+// ------------------------------------------------------------------ super admins
+
+async function findSuperAdmin(where: ReturnType<typeof eq>) {
+  const [row] = await db.select().from(superAdmins).where(where).limit(1);
+  return row;
+}
+
+function toPlatformUser(row: { id: number; name: string; email: string }): PlatformUser {
+  return { id: row.id, name: row.name, email: row.email };
+}
+
+/** The signed-in super admin, or null. */
+export const getPlatformUser = cache(async (): Promise<PlatformUser | null> => {
+  const token = parseToken((await cookies()).get(PLATFORM_COOKIE)?.value);
+  if (!token) return null;
+  const row = await findSuperAdmin(eq(superAdmins.id, token.staffId));
+  if (!row) return null;
+  return signatureMatches(sign(row.id, token.issuedAt, row.passwordSalt, "platform"), token.signature) ? toPlatformUser(row) : null;
+});
+
+export async function requirePlatformUser() {
+  const user = await getPlatformUser();
+  if (!user) throw unauthorized("Sign in as a platform administrator");
+  return user;
 }
 
 // ------------------------------------------------------------------ profile
@@ -185,30 +238,6 @@ export async function changePassword(user: SessionUser, raw: unknown) {
   await writeSessionCookie(user.id, salt);
 }
 
-// ------------------------------------------------------------------ sign-up
-
-function allowedSignupDomain(email: string) {
-  const allowed = process.env.SIGNUP_ALLOWED_DOMAINS?.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
-  return !allowed?.length || allowed.includes(email.split("@")[1] ?? "");
-}
-
-/** Self-service sign-up: creates a regular (non-admin) agent and signs them in. */
-export async function signup(raw: unknown, ip: string) {
-  await rateLimit(`signup:ip:${ip}`, 5, 60 * MINUTE);
-  const parsed = signupSchema.safeParse(raw);
-  if (!parsed.success) throw invalid(toFieldErrors(parsed.error));
-  const { name, email, dept, password } = parsed.data;
-  if (!allowedSignupDomain(email)) {
-    throw invalid({ email: "Sign-up is limited to your organisation's email domain" });
-  }
-
-  // Reuses the agents resource for uniqueness and department validation.
-  const agent = await agents.create({ name, email, dept, role: "Agent", isAdmin: false, active: true, onVacation: false });
-  const salt = await setPassword(agent.id, password);
-  await writeSessionCookie(agent.id, salt);
-  return toSessionUser((await findStaff(eq(staff.id, agent.id)))!);
-}
-
 // ------------------------------------------------------------------ password reset
 
 export interface ForgotPasswordResult {
@@ -228,7 +257,7 @@ export async function requestPasswordReset(raw: unknown, ip: string, origin: str
   await rateLimit(`forgot:email:${email}`, 3, 15 * MINUTE);
 
   const row = await findStaff(eq(staff.email, email));
-  if (!row?.active) return {};
+  if (!row?.active || row.tenantStatus !== "Active") return {};
 
   const url = `${appUrl(origin)}/reset-password?token=${await issueResetToken(row.id)}`;
   await sendMail({
@@ -256,6 +285,7 @@ export async function resetPassword(raw: unknown, ip: string) {
   if (!found) {
     throw invalid({ token: "This reset link is invalid or has expired" }, "This reset link is invalid or has expired");
   }
+  if (found.tenantStatus !== "Active") throw forbidden(SUSPENDED);
 
   // New salt invalidates every existing session; tokens are single-use.
   const salt = await setPassword(found.staffId, parsed.data.password);
@@ -269,14 +299,19 @@ export async function resetPassword(raw: unknown, ip: string) {
   return toSessionUser((await findStaff(eq(staff.id, found.staffId)))!);
 }
 
-/** Emails a newly created agent a link to set their first password. */
-export async function sendInvite(staffId: number, invitedBy: SessionUser, origin: string) {
+/**
+ * Emails a newly created agent a link to set their first password. With
+ * `revealUnsent` (platform console only) the link is returned when the email
+ * couldn't be sent, so the super admin can pass it on by hand.
+ */
+export async function sendInvite(staffId: number, invitedBy: { name: string }, origin: string, { revealUnsent = false } = {}) {
   const row = (await findStaff(eq(staff.id, staffId)))!;
   const url = `${appUrl(origin)}/reset-password?token=${await issueResetToken(row.id, "invite")}`;
   const inviteEmailed = await sendMail({
     to: row.email,
-    subject: `${invitedBy.name} invited you to Threadline`,
-    text: `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} added you to the Threadline support desk. Set your password to get started (link valid for 72 hours):\n\n${url}`,
+    subject: `${invitedBy.name} invited you to ${row.tenantName} on Threadline`,
+    text: `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} added you to the ${row.tenantName} support desk on Threadline. Set your password to get started (link valid for 72 hours):\n\n${url}\n\nAfterwards, sign in with this email address.`,
   });
-  return process.env.NODE_ENV === "production" ? { inviteEmailed } : { inviteEmailed, devInviteUrl: url };
+  const reveal = process.env.NODE_ENV !== "production" || (revealUnsent && !inviteEmailed);
+  return reveal ? { inviteEmailed, inviteUrl: url } : { inviteEmailed };
 }

@@ -1,6 +1,7 @@
 import { and, eq, getTableName, sql, type Column, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { customers, departments, faqCategories, helpTopics, organizations, slaPlans, staff, tickets } from "../db/schema";
+import { inTenant } from "../tenant";
 
 /**
  * Fully qualified `"table"."column"`. Drizzle leaves columns unqualified in
@@ -32,22 +33,22 @@ export const countSql = sql<number>`count(*)::int`;
 // The API speaks in display names (e.g. assignee "Priya Nair"); these resolve them.
 
 export async function departmentIdByName(name: string) {
-  const [row] = await db.select({ id: departments.id }).from(departments).where(eq(departments.name, name)).limit(1);
+  const [row] = await db.select({ id: departments.id }).from(departments).where(and(inTenant(departments.tenantId), eq(departments.name, name))).limit(1);
   return row?.id;
 }
 
 export async function organizationIdByName(name: string) {
-  const [row] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.name, name)).limit(1);
+  const [row] = await db.select({ id: organizations.id }).from(organizations).where(and(inTenant(organizations.tenantId), eq(organizations.name, name))).limit(1);
   return row?.id;
 }
 
 export async function slaPlanIdByName(name: string) {
-  const [row] = await db.select({ id: slaPlans.id }).from(slaPlans).where(eq(slaPlans.name, name)).limit(1);
+  const [row] = await db.select({ id: slaPlans.id }).from(slaPlans).where(and(inTenant(slaPlans.tenantId), eq(slaPlans.name, name))).limit(1);
   return row?.id;
 }
 
 export async function categoryIdByName(name: string) {
-  const [row] = await db.select({ id: faqCategories.id }).from(faqCategories).where(eq(faqCategories.name, name)).limit(1);
+  const [row] = await db.select({ id: faqCategories.id }).from(faqCategories).where(and(inTenant(faqCategories.tenantId), eq(faqCategories.name, name))).limit(1);
   return row?.id;
 }
 
@@ -56,7 +57,7 @@ export async function helpTopicByName(name: string) {
     .select({ id: helpTopics.id, departmentId: helpTopics.departmentId, graceHours: slaPlans.graceHours })
     .from(helpTopics)
     .innerJoin(slaPlans, eq(slaPlans.id, helpTopics.slaPlanId))
-    .where(eq(helpTopics.name, name))
+    .where(and(inTenant(helpTopics.tenantId), eq(helpTopics.name, name)))
     .limit(1);
   return row;
 }
@@ -69,12 +70,12 @@ export async function agentIdByName(name: string, { activeOnly = false } = {}) {
   const rows = await db
     .select({ id: staff.id })
     .from(staff)
-    .where(activeOnly ? and(eq(staff.name, name), eq(staff.active, true)) : eq(staff.name, name))
+    .where(and(inTenant(staff.tenantId), eq(staff.name, name), activeOnly ? eq(staff.active, true) : undefined))
     .limit(2);
   return rows.length === 1 ? rows[0].id : undefined;
 }
 
 export async function customerByEmail(email: string) {
-  const [row] = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
+  const [row] = await db.select().from(customers).where(and(inTenant(customers.tenantId), eq(customers.email, email))).limit(1);
   return row;
 }

@@ -14,7 +14,7 @@ import {
 import type { LoginResult, PlatformUser, SessionUser } from "@/types";
 import { db } from "./db";
 import { departments, staff, superAdmins, tenants } from "./db/schema";
-import { agents } from "./domain/directory";
+import { agents, employees } from "./domain/directory";
 import { forbidden, invalid, unauthorized } from "./errors";
 import { sendMail } from "./mail";
 import { appUrl, findResetToken, issueResetToken, revokeResetTokens } from "./password-reset";
@@ -81,6 +81,7 @@ const sessionColumns = {
   name: staff.name,
   email: staff.email,
   role: staff.role,
+  kind: staff.kind,
   dept: departments.name,
   isAdmin: staff.isAdmin,
   avatarColor: staff.avatarColor,
@@ -107,6 +108,7 @@ function toSessionUser(row: NonNullable<Awaited<ReturnType<typeof findStaff>>>):
     firstName: row.name.split(" ")[0],
     email: row.email,
     role: row.role,
+    kind: row.kind,
     dept: row.dept,
     isAdmin: row.isAdmin,
     avatarColor: row.avatarColor,
@@ -223,7 +225,7 @@ export async function requirePlatformUser() {
 export async function updateProfile(user: SessionUser, raw: unknown) {
   const parsed = profileSchema.safeParse(raw);
   if (!parsed.success) throw invalid(toFieldErrors(parsed.error));
-  await agents.update(user.id, parsed.data);
+  await (user.kind === "employee" ? employees : agents).update(user.id, parsed.data);
   return toSessionUser((await findStaff(eq(staff.id, user.id)))!);
 }
 
@@ -312,7 +314,10 @@ export async function sendInvite(staffId: number, invitedBy: { name: string }, o
   const inviteEmailed = await sendMail({
     to: row.email,
     subject: `${invitedBy.name} invited you to ${row.tenantName} on Threadline`,
-    text: `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} added you to the ${row.tenantName} support desk on Threadline. Set your password to get started (link valid for 72 hours):\n\n${url}\n\nAfterwards, sign in with this email address.`,
+    text:
+      row.kind === "employee"
+        ? `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} gave you access to the ${row.tenantName} request portal on Threadline, where you can send requests to any department and follow them. Set your password to get started (link valid for 72 hours):\n\n${url}\n\nAfterwards, sign in with this email address.`
+        : `Hi ${row.name.split(" ")[0]},\n\n${invitedBy.name} added you to the ${row.tenantName} support desk on Threadline. Set your password to get started (link valid for 72 hours):\n\n${url}\n\nAfterwards, sign in with this email address.`,
   });
   const reveal = process.env.NODE_ENV !== "production" || (revealUnsent && !inviteEmailed);
   return reveal ? { inviteEmailed, inviteUrl: url } : { inviteEmailed };

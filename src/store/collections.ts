@@ -4,6 +4,7 @@ import {
   categoriesService,
   customersService,
   departmentsService,
+  employeesService,
   helpTopicsService,
   organizationsService,
   slaPlansService,
@@ -16,6 +17,7 @@ export const useCustomersStore = createCrudStore("customers", customersService);
 export const useOrganizationsStore = createCrudStore("organizations", organizationsService);
 
 export const useStaffStore = createCrudStore("staff", staffService);
+export const useEmployeesStore = createCrudStore("employees", employeesService);
 export const useDepartmentsStore = createCrudStore("departments", departmentsService);
 export const useTeamsStore = createCrudStore("teams", teamsService);
 export const useSlaPlansStore = createCrudStore("slaPlans", slaPlansService);

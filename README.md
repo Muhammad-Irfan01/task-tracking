@@ -9,6 +9,7 @@ A multi-organization help-desk platform (tickets, customers, agents, SLAs, knowl
 | **Super admin** (you, the platform owner) — from `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | `/login` → `/platform` | Create client organizations with their first admin, set the plan (Small 75 / Medium 250 / Large 1000 employees), add more admins, re-send invites, suspend / reactivate / delete organizations. Can't see inside a desk. |
 | **Organization admin** — invited by the super admin | `/login` → their desk | Everything inside their own organization: invite staff (Agents → Add Agent), departments, teams, SLA plans, help topics, settings |
 | **Staff (agent)** — invited by their organization admin | `/login` → their desk | Tickets, customers, knowledge base, reports inside their organization |
+| **Employee** — invited by their organization admin (Employees page) | `/login` → `/portal` | Raise tickets to a department (topics follow the department), reply with attachments, get notified of agent replies and status changes, mark resolved / reopen. Sees only their own tickets and never the desk |
 
 Each organization is isolated: every table carries `tenant_id`, and every query runs inside the signed-in
 user's organization (`src/server/tenant.ts`); a query without one throws instead of returning other

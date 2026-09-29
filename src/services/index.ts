@@ -4,4 +4,5 @@ export * from "./content.service";
 export * from "./directory.service";
 export * from "./resource.service";
 export { ticketsService } from "./tickets.service";
+export { portalService } from "./portal.service";
 export { platformService, type InviteResult } from "./platform.service";

@@ -135,6 +135,13 @@ export const staff = pgTable(
       .notNull()
       .references(() => departments.id, { onDelete: "restrict" }),
     role: text("role").notNull().default("Agent"),
+    /**
+     * "agent" works tickets in the desk; "employee" only raises and follows
+     * their own tickets in the portal (/portal).
+     */
+    kind: text("kind", { enum: ["agent", "employee"] }).notNull().default("agent"),
+    /** Employees: the customer record their tickets are filed under (created on first ticket). */
+    customerId: integer("customer_id").references((): AnyPgColumn => customers.id, { onDelete: "set null" }),
     isAdmin: boolean("is_admin").notNull().default(false),
     active: boolean("active").notNull().default(true),
     onVacation: boolean("on_vacation").notNull().default(false),

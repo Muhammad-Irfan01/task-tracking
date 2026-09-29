@@ -108,7 +108,7 @@ export async function buildReport(range: ReportRange): Promise<ReportSummary> {
         open: sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.assigneeId)} = ${q(staff.id)} and ${ticketIsOpenQ})`,
       })
       .from(staff)
-      .where(and(inTenant(staff.tenantId), eq(staff.active, true))),
+      .where(and(inTenant(staff.tenantId), eq(staff.kind, "agent"), eq(staff.active, true))),
   ]);
 
   const rows: WindowRow[] = windowRows.map((r) => ({

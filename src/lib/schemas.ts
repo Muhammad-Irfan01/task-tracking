@@ -26,6 +26,9 @@ export const ticketCreateSchema = z.object({
   message: z.string().trim().min(1, "Please describe the issue").max(10_000),
 });
 
+/** What an employee fills in on the portal; the requester is always themselves. */
+export const portalTicketSchema = ticketCreateSchema.omit({ customerName: true, customerEmail: true });
+
 export const ticketUpdateSchema = z
   .object({
     status: z.enum(TICKET_STATUS_VALUES, "Unknown status"),
@@ -62,6 +65,14 @@ export const agentSchema = z.object({
   isAdmin: z.boolean(),
   active: z.boolean(),
   onVacation: z.boolean(),
+});
+
+/** A portal user who raises tickets (created by an org admin). */
+export const employeeSchema = z.object({
+  name: required("Name"),
+  email,
+  dept: required("Department"),
+  active: z.boolean(),
 });
 
 export const departmentSchema = z.object({
@@ -214,6 +225,7 @@ export const tenantAdminSchema = z.object({
 
 export type TicketCreateInput = z.infer<typeof ticketCreateSchema>;
 export type TicketUpdateInput = z.infer<typeof ticketUpdateSchema>;
+export type PortalTicketInput = z.infer<typeof portalTicketSchema>;
 export type CustomerInput = z.infer<typeof customerSchema>;
 export type OrganizationInput = z.infer<typeof organizationSchema>;
 export type AgentInput = z.infer<typeof agentSchema>;
@@ -230,6 +242,7 @@ export type PasswordInput = z.infer<typeof passwordSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type OrgSettingsInput = z.infer<typeof orgSettingsSchema>;
+export type EmployeeInput = z.infer<typeof employeeSchema>;
 export type TenantInput = z.infer<typeof tenantSchema>;
 export type TenantCreateInput = z.infer<typeof tenantCreateSchema>;
 export type TenantAdminInput = z.infer<typeof tenantAdminSchema>;

@@ -1,12 +1,13 @@
 # Threadline Platform — Usage Flow & Step-by-Step Production Test
 
-Threadline is a platform you sell to many client organizations. There are three kinds of users:
+Threadline is a platform you sell to many client organizations. There are four kinds of users:
 
 | Who | How the account is made | Where they land after `/login` |
 | --- | --- | --- |
 | **Super admin** — you | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` in Vercel | `/platform` (the platform console) |
 | **Organization admin** — your customer | You create them together with their organization in `/platform` | Their own help desk |
-| **Staff (agent)** — your customer's employees | The organization admin adds them in **Agents → Add Agent** | Their own help desk |
+| **Staff (agent)** — the people who work tickets | The organization admin adds them in **Agents → Add Agent** | Their own help desk |
+| **Employee** — anyone who needs something done | The organization admin adds them in **Employees → Add Employee** | The **request portal** (`/portal`): create tickets for a department, reply, attach files, resolve / reopen |
 
 Every organization is a separate desk: an organization can never see another organization's tickets, customers,
 agents, articles or files. There is no public sign-up — everyone joins through an invite email.
@@ -236,6 +237,28 @@ rm beta.txt
 If Vercel **Deployment Protection** is on, curl gets a Vercel login page instead; test in the browser.
 
 ---
+
+## Part 6b — Employee request portal (15 min)
+
+Employees raise tickets to a department and talk to the agent working on them. Use `[TEST] Acme` (with its admin
+and agent from Parts 3–4) and a **new browser or profile** for the employee.
+
+| # | Step | Expected result | ✓ |
+| --- | --- | --- | --- |
+| 6b.1 | As **Acme Admin**: sidebar → **Employees** → **Add Employee**: `Acme Employee`, `employee@acme.test`, any department | Created; listed as **Invited**. Not shown on the Agents page. Settings → Organization employees count goes up by 1 | ☐ |
+| 6b.2 | Add an employee with `x@gmail.com` | Refused: "Use an @acme.test email address" | ☐ |
+| 6b.3 | Open the employee's invite (email, or **Resend invite** in the super admin console to get the link) and set a password | Lands on **/portal**: "Hi …, here are your tickets", no desk sidebar | ☐ |
+| 6b.4 | As the employee open `/tickets`, `/customers`, `/staff` in the address bar | Sent back to `/portal` every time | ☐ |
+| 6b.5 | **New ticket**: pick a department — the **Topic** list changes to that department's topics. Priority High, subject `Need a new monitor`, some details → **Submit ticket** | Opens the ticket page: status **Open**, "With <agent>" or "Waiting for an agent", department and topic shown | ☐ |
+| 6b.6 | As the **assigned agent** (desk) | Bell: "… assigned to you". The ticket is in Tickets with requester **Acme Employee** | ☐ |
+| 6b.7 | Agent replies "Ordering one today" and sets status **On Hold** | — | ☐ |
+| 6b.8 | Employee: bell icon | "… replied on …" and "… is now On Hold"; clicking opens the portal ticket (not the desk) | ☐ |
+| 6b.9 | Employee: open the ticket (or wait up to 20 s on it) | The agent's reply appears with a **Support** badge; own messages show **You**; status On Hold | ☐ |
+| 6b.10 | Employee replies with a photo attached | Reply + attachment shown; the agent gets "New reply on …" and can open the file | ☐ |
+| 6b.11 | Employee: **Mark resolved** → confirm | Status Resolved; agent notified "… resolved …". **Reopen** sets it back to Open and notifies the agent again | ☐ |
+| 6b.12 | Add a second employee; sign in as them | Their **My tickets** is empty; opening the first employee's ticket URL (`/portal/tickets/<id>`) shows "Ticket not found"; the attachment link returns 404 | ☐ |
+| 6b.13 | As an **agent**, open `/portal` | Sent back to the desk (the portal is only for employees) | ☐ |
+| 6b.14 | Employee: **Account** → change name; change password | Saved; changing the email to another domain is refused | ☐ |
 
 ## Part 7 — Super admin management (10 min)
 

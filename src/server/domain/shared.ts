@@ -70,7 +70,7 @@ export async function agentIdByName(name: string, { activeOnly = false } = {}) {
   const rows = await db
     .select({ id: staff.id })
     .from(staff)
-    .where(and(inTenant(staff.tenantId), eq(staff.name, name), activeOnly ? eq(staff.active, true) : undefined))
+    .where(and(inTenant(staff.tenantId), eq(staff.kind, "agent"), eq(staff.name, name), activeOnly ? eq(staff.active, true) : undefined))
     .limit(2);
   return rows.length === 1 ? rows[0].id : undefined;
 }

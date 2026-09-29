@@ -230,6 +230,26 @@ async function seed(database: Database) {
   }
   log(`seeded ${agents.length} agents, ${customers.length} customers, ${tickets.length} tickets`);
 
+  // Portal users: they raise tickets from /portal and never see the desk.
+  const demoEmployees = [
+    { name: "Omar Siddiqui", email: "omar.siddiqui@threadline.io", dept: depts[0].name, avatarColor: "bg-amber-500" },
+    { name: "Hina Rauf", email: "hina.rauf@threadline.io", dept: depts[1]?.name ?? depts[0].name, avatarColor: "bg-rose-400" },
+  ];
+  await database.insert(t.staff).values(
+    demoEmployees.map((e) => ({
+      tenantId,
+      name: e.name,
+      email: e.email,
+      departmentId: id(depts, e.dept),
+      role: "Employee",
+      kind: "employee" as const,
+      avatarColor: e.avatarColor,
+      passwordHash: credential.hash,
+      passwordSalt: credential.salt,
+    })),
+  );
+  log(`seeded ${demoEmployees.length} portal employees (${demoEmployees.map((e) => e.email).join(", ")})`);
+
   await seedSecondTenant(database, credential);
 }
 

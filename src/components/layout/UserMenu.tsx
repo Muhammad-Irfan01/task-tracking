@@ -62,18 +62,31 @@ export function UserMenu() {
               <div className="border-b border-ink-900/[0.06] px-3 py-2 dark:border-paper-100/[0.06]">
                 <p className="truncate text-sm font-medium text-ink-900 dark:text-paper-100">{user.name}</p>
                 <p className="truncate text-xs text-ink-900/45 dark:text-paper-100/45">
-                  {user.role} · {user.dept}
+                  {user.kind === "employee" ? `${user.dept} · ${user.tenantName}` : `${user.role} · ${user.dept}`}
                 </p>
               </div>
-              <Link href="/settings?tab=General" role="menuitem" onClick={close} className={ITEM}>
-                My Profile
-              </Link>
-              <Link href="/settings?tab=Notifications" role="menuitem" onClick={close} className={ITEM}>
-                Preferences
-              </Link>
-              <Link href={`/tickets?assignee=${encodeURIComponent(user.name)}`} role="menuitem" onClick={close} className={ITEM}>
-                My tickets
-              </Link>
+              {user.kind === "employee" ? (
+                <>
+                  <Link href="/portal" role="menuitem" onClick={close} className={ITEM}>
+                    My tickets
+                  </Link>
+                  <Link href="/portal/account" role="menuitem" onClick={close} className={ITEM}>
+                    My account
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/settings?tab=General" role="menuitem" onClick={close} className={ITEM}>
+                    My Profile
+                  </Link>
+                  <Link href="/settings?tab=Notifications" role="menuitem" onClick={close} className={ITEM}>
+                    Preferences
+                  </Link>
+                  <Link href={`/tickets?assignee=${encodeURIComponent(user.name)}`} role="menuitem" onClick={close} className={ITEM}>
+                    My tickets
+                  </Link>
+                </>
+              )}
               <button
                 role="menuitem"
                 onClick={signOut}

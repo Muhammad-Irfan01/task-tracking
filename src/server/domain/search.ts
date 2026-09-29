@@ -40,7 +40,7 @@ export async function search(rawQuery: string): Promise<SearchResults> {
       .select({ id: staff.id, name: staff.name, dept: departments.name })
       .from(staff)
       .innerJoin(departments, eq(departments.id, staff.departmentId))
-      .where(and(inTenant(staff.tenantId), or(ilike(staff.name, like), ilike(staff.email, like), ilike(departments.name, like))))
+      .where(and(inTenant(staff.tenantId), eq(staff.kind, "agent"), or(ilike(staff.name, like), ilike(staff.email, like), ilike(departments.name, like))))
       .limit(LIMIT),
     db
       .select({ id: articles.id, question: articles.question, category: faqCategories.name })

@@ -174,6 +174,8 @@ export interface SessionUser {
   firstName: string;
   email: string;
   role: string;
+  /** "agent" works in the desk; "employee" only uses the portal (/portal) for their own tickets. */
+  kind: "agent" | "employee";
   dept: string;
   isAdmin: boolean;
   avatarColor: string;
@@ -182,6 +184,26 @@ export interface SessionUser {
   tenantName: string;
   /** Staff emails must end with @this domain; null = no restriction. */
   tenantEmailDomain: string | null;
+}
+
+/** What the portal's "New ticket" form can offer: public departments and their help topics. */
+export interface PortalOptions {
+  departments: { name: string; topics: string[] }[];
+}
+
+/** A portal user who raises and follows their own tickets. */
+export interface Employee {
+  id: number;
+  name: string;
+  email: string;
+  /** The employee's own department (not where their tickets go). */
+  dept: string;
+  active: boolean;
+  avatarColor: string;
+  /** False until they've used their invite. */
+  hasPassword: boolean;
+  openTickets: number;
+  totalTickets: number;
 }
 
 /** A platform operator (super admin) who manages client organizations. */

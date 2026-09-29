@@ -88,8 +88,8 @@ function toTicket(row: TicketRow): Ticket {
   };
 }
 
-export async function listTickets() {
-  return (await ticketQuery().orderBy(desc(tickets.updatedAt))).map(toTicket);
+export async function listTickets(where?: SQL) {
+  return (await ticketQuery(where).orderBy(desc(tickets.updatedAt))).map(toTicket);
 }
 
 export async function getTicket(rawId: string | number) {
@@ -100,7 +100,7 @@ export async function getTicket(rawId: string | number) {
 }
 
 /** Lightweight lookup (no joins) used by metadata and mutations. */
-async function ticketRecord(rawId: string | number) {
+export async function ticketRecord(rawId: string | number) {
   const id = parseId(rawId);
   const [row] = id ? await db.select().from(tickets).where(and(eq(tickets.id, id), inTenant(tickets.tenantId))) : [];
   if (!row) throw notFound("Ticket");
@@ -158,11 +158,22 @@ export async function getThread(rawId: string | number): Promise<TicketMessage[]
 /** Least-loaded available agent in the department, falling back to anyone available. */
 async function autoAssign(departmentId: number) {
   const openCount = sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.assigneeId)} = ${q(staff.id)} and ${ticketIsOpenQ})`;
-  const available = and(inTenant(staff.tenantId), eq(staff.active, true), eq(staff.onVacation, false));
+  const available = and(inTenant(staff.tenantId), eq(staff.kind, "agent"), eq(staff.active, true), eq(staff.onVacation, false));
   const pick = (where: SQL | undefined) =>
     db.select({ id: staff.id, name: staff.name }).from(staff).where(where).orderBy(asc(openCount), asc(staff.id)).limit(1);
   const [inDept] = await pick(and(available, eq(staff.departmentId, departmentId)));
   return inDept ?? (await pick(available))[0];
+}
+
+/** Tells the employee who raised a ticket (if a portal user did) about agent activity. */
+async function notifyRequester(customerId: number, event: { title: string; body: string; ticketId: number }) {
+  const [requester] = await db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.customerId, customerId), eq(staff.kind, "employee"), inTenant(staff.tenantId)))
+    .limit(1);
+  if (!requester) return;
+  await notify({ type: "reply", title: event.title, body: event.body, href: `/portal/tickets/${event.ticketId}`, recipientId: requester.id });
 }
 
 async function notifyAssignee(ticketId: number, subject: string, assigneeId: number | null, actor: SessionUser) {
@@ -199,7 +210,9 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
     customer ??= await customerByEmail(input.customerEmail);
   }
 
+  // With nobody available the creating agent takes it; a portal employee's ticket stays unassigned.
   const assignee = await autoAssign(departmentId!);
+  const assigneeId = assignee?.id ?? (actor.kind === "employee" ? null : actor.id);
   const now = new Date();
   const [ticket] = await db
     .insert(tickets)
@@ -210,7 +223,7 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
       priority: input.priority,
       departmentId: departmentId!,
       helpTopicId: topic!.id,
-      assigneeId: assignee?.id ?? actor.id,
+      assigneeId,
       customerId: customer!.id,
       source: "Web",
       createdAt: now,
@@ -226,7 +239,7 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
     body: input.message,
     createdAt: now,
   });
-  await notifyAssignee(ticket.id, input.subject, assignee?.id ?? actor.id, actor);
+  await notifyAssignee(ticket.id, input.subject, assigneeId, actor);
   return getTicket(ticket.id);
 }
 
@@ -261,6 +274,13 @@ export async function updateTicket(rawId: string, raw: unknown, actor: SessionUs
 
   await db.update(tickets).set(set).where(eq(tickets.id, current.id));
   if (assigneeId && assigneeId !== current.assigneeId) await notifyAssignee(current.id, current.subject, assigneeId, actor);
+  if (changes.status && changes.status !== current.status && actor.kind !== "employee") {
+    await notifyRequester(current.customerId, {
+      title: `${ticketNumber(current.id)} is now ${changes.status}`,
+      body: current.subject,
+      ticketId: current.id,
+    });
+  }
   return getTicket(current.id);
 }
 
@@ -295,7 +315,18 @@ export async function attachmentUploadPrefix(rawId: string) {
  * `files` are posted inline (database storage); `uploads` reference files the
  * browser already put in blob storage. Either way sizes are checked here.
  */
-export async function addReply(rawId: string, body: string, files: File[], uploads: BlobUpload[], actor: SessionUser) {
+/**
+ * Adds a message to a ticket. Agents reply as staff; `asRequester` (the portal)
+ * posts as the person who raised the ticket and leaves the SLA clock alone.
+ */
+export async function addReply(
+  rawId: string,
+  body: string,
+  files: File[],
+  uploads: BlobUpload[],
+  actor: SessionUser,
+  { asRequester = false } = {},
+) {
   const ticket = await ticketRecord(rawId);
   const limits = attachmentLimits();
   const text = body.trim();
@@ -323,7 +354,7 @@ export async function addReply(rawId: string, body: string, files: File[], uploa
   const now = new Date();
   const [message] = await db
     .insert(messages)
-    .values({ ticketId: ticket.id, isStaff: true, authorStaffId: actor.id, authorName: actor.name, body: text, createdAt: now })
+    .values({ ticketId: ticket.id, isStaff: !asRequester, authorStaffId: actor.id, authorName: actor.name, body: text, createdAt: now })
     .returning({ id: messages.id });
 
   if (files.length || stored.length) {
@@ -349,12 +380,24 @@ export async function addReply(rawId: string, body: string, files: File[], uploa
 
   await db
     .update(tickets)
-    .set({
-      updatedAt: now,
-      firstResponseAt: ticket.firstResponseAt ?? now,
-      ...(ticket.status === "Open" ? { status: "In Progress" as const } : {}),
-    })
+    .set(
+      asRequester
+        ? { updatedAt: now }
+        : {
+            updatedAt: now,
+            firstResponseAt: ticket.firstResponseAt ?? now,
+            ...(ticket.status === "Open" ? { status: "In Progress" as const } : {}),
+          },
+    )
     .where(eq(tickets.id, ticket.id));
+
+  if (!asRequester) {
+    await notifyRequester(ticket.customerId, {
+      title: `${actor.name} replied on ${ticketNumber(ticket.id)}`,
+      body: text.slice(0, 80) || "sent an attachment",
+      ticketId: ticket.id,
+    });
+  }
 
   if (ticket.assigneeId && ticket.assigneeId !== actor.id) {
     await notify({
@@ -374,12 +417,12 @@ export async function getAttachment(id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound("Attachment");
   // Joined through the ticket so one organization can never read another's files.
   const [row] = await db
-    .select({ file: attachments })
+    .select({ file: attachments, customerId: tickets.customerId })
     .from(attachments)
     .innerJoin(messages, eq(messages.id, attachments.messageId))
     .innerJoin(tickets, eq(tickets.id, messages.ticketId))
     .where(and(eq(attachments.id, id), inTenant(tickets.tenantId)));
-  const file = row?.file;
+  const file = row ? { ...row.file, ticketCustomerId: row.customerId } : undefined;
   if (!file) throw notFound("Attachment");
   return file;
 }

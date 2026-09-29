@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { PlatformUser, SessionUser } from "@/types";
 import { requirePlatformUser, requireUser } from "./auth";
-import { HttpError } from "./errors";
+import { forbidden, HttpError } from "./errors";
 import type { Resource } from "./resource";
 import { withTenant } from "./tenant";
 
@@ -35,20 +35,33 @@ function errorResponse(error: unknown) {
 
 /**
  * Wraps a route handler with authentication and uniform error responses.
- * Authenticated handlers run inside the agent's tenant, so every query they
- * make is limited to that organization's data.
+ * Authenticated handlers run inside the user's tenant, so every query they
+ * make is limited to that organization's data. Employees (portal users) are
+ * refused everywhere except routes marked `portal: true`.
  */
-export function route<P = Record<string, never>>(handler: Handler<P>, { auth = true } = {}) {
+export function route<P = Record<string, never>>(handler: Handler<P>, { auth = true, portal = false } = {}) {
   return async (request: NextRequest, context: Context<P>) => {
     try {
       const params = context?.params ? await context.params : ({} as P);
       if (!auth) return await handler({ request, params, user: null as unknown as SessionUser });
       const user = await requireUser();
+      if (user.kind === "employee" && !portal) throw forbidden("This is only available to agents");
       return await withTenant(user.tenantId, () => handler({ request, params, user }));
     } catch (error) {
       return errorResponse(error);
     }
   };
+}
+
+/** Route handler for the employee portal: employees only, inside their tenant. */
+export function portalRoute<P = Record<string, never>>(handler: Handler<P>) {
+  return route<P>(
+    (args) => {
+      if (args.user.kind !== "employee") throw forbidden("The portal is for employees; agents use the desk");
+      return handler(args);
+    },
+    { portal: true },
+  );
 }
 
 /** Route handler for the platform console; only super admins get through. */

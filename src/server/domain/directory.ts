@@ -6,12 +6,13 @@ import {
   agentSchema,
   customerSchema,
   departmentSchema,
+  employeeSchema,
   helpTopicSchema,
   organizationSchema,
   slaPlanSchema,
   teamSchema,
 } from "@/lib/schemas";
-import type { Agent, Customer, Department, HelpTopic, Organization, SlaPlan, Team } from "@/types";
+import type { Agent, Customer, Department, Employee, HelpTopic, Organization, SlaPlan, Team } from "@/types";
 import { db } from "../db";
 import {
   cannedResponses,
@@ -153,9 +154,12 @@ async function agentRows(where?: SQL): Promise<Agent[]> {
     })
     .from(staff)
     .innerJoin(departmentsTable, eq(departmentsTable.id, staff.departmentId))
-    .where(and(inTenant(staff.tenantId), where))
+    .where(and(inTenant(staff.tenantId), eq(staff.kind, "agent"), where))
     .orderBy(asc(staff.id));
 }
+
+/** One person in the current tenant, limited to agents or to employees. */
+const personWhere = (id: number, kind: "agent" | "employee") => and(eq(staff.id, id), inTenant(staff.tenantId), eq(staff.kind, kind));
 
 /** Sign-in is by email alone, so an agent can't share an email with a platform super admin. */
 async function assertNotPlatformEmail(email: string | undefined) {
@@ -220,8 +224,8 @@ export const agents = createResource({
     await assertEmailInTenantDomain(changes.email);
     if (changes.active) await assertSeatAvailable(id);
     const set = { ...changes, ...(departmentId ? { departmentId } : {}) };
-    if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(and(eq(staff.id, id), inTenant(staff.tenantId)))).length > 0;
-    return (await db.update(staff).set(set).where(and(eq(staff.id, id), inTenant(staff.tenantId))).returning({ id: staff.id })).length > 0;
+    if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(personWhere(id, "agent"))).length > 0;
+    return (await db.update(staff).set(set).where(personWhere(id, "agent")).returning({ id: staff.id })).length > 0;
   },
   deleteBlocker: async (id) => {
     const open = await count(db.select({ n: countSql }).from(tickets).where(and(eq(tickets.assigneeId, id), ticketIsOpen)));
@@ -232,7 +236,71 @@ export const agents = createResource({
     if (led) return `This agent leads ${led.name}. Pick a new lead first.`;
     return null;
   },
-  remove: async (id) => (await db.delete(staff).where(and(eq(staff.id, id), inTenant(staff.tenantId))).returning({ id: staff.id })).length > 0,
+  remove: async (id) => (await db.delete(staff).where(personWhere(id, "agent")).returning({ id: staff.id })).length > 0,
+});
+
+// ---------------------------------------------------------------- employees (portal users)
+
+async function employeeRows(where?: SQL): Promise<Employee[]> {
+  const rows = await db
+    .select({
+      id: staff.id,
+      name: staff.name,
+      email: staff.email,
+      dept: departmentsTable.name,
+      active: staff.active,
+      avatarColor: staff.avatarColor,
+      hasPassword: sql<boolean>`${staff.passwordHash} is not null`,
+      openTickets: countTickets(sql`${q(tickets.customerId)} = ${q(staff.customerId)} and ${ticketIsOpenQ}`),
+      totalTickets: countTickets(sql`${q(tickets.customerId)} = ${q(staff.customerId)}`),
+    })
+    .from(staff)
+    .innerJoin(departmentsTable, eq(departmentsTable.id, staff.departmentId))
+    .where(and(inTenant(staff.tenantId), eq(staff.kind, "employee"), where))
+    .orderBy(asc(staff.name));
+  return rows.map((row) => ({ ...row, hasPassword: Boolean(row.hasPassword) }));
+}
+
+/**
+ * People who raise tickets from the portal. They share the staff table (one
+ * sign-in, one email namespace, counted against the plan) but never work tickets.
+ */
+export const employees = createResource({
+  entity: "Employee",
+  schema: employeeSchema,
+  list: () => employeeRows(),
+  get: async (id) => (await employeeRows(eq(staff.id, id)))[0],
+  insert: async ({ dept, ...input }) => {
+    const departmentId = (await resolveDepartment(dept))!;
+    await assertNotPlatformEmail(input.email);
+    await assertEmailInTenantDomain(input.email);
+    if (input.active) await assertSeatAvailable();
+    const total = await count(db.select({ n: countSql }).from(staff).where(inTenant(staff.tenantId)));
+    const [row] = await db
+      .insert(staff)
+      .values({
+        ...input,
+        departmentId,
+        tenantId: currentTenant(),
+        kind: "employee",
+        role: "Employee",
+        isAdmin: false,
+        avatarColor: AVATAR_COLORS[total % AVATAR_COLORS.length],
+      })
+      .returning({ id: staff.id });
+    return row.id;
+  },
+  update: async (id, { dept, ...changes }) => {
+    const departmentId = await resolveDepartment(dept);
+    await assertNotPlatformEmail(changes.email);
+    await assertEmailInTenantDomain(changes.email);
+    if (changes.active) await assertSeatAvailable(id);
+    const set = { ...changes, ...(departmentId ? { departmentId } : {}) };
+    if (Object.keys(set).length === 0) return (await db.select({ id: staff.id }).from(staff).where(personWhere(id, "employee"))).length > 0;
+    return (await db.update(staff).set(set).where(personWhere(id, "employee")).returning({ id: staff.id })).length > 0;
+  },
+  // Their tickets stay: they're filed under the employee's customer record, not the account.
+  remove: async (id) => (await db.delete(staff).where(personWhere(id, "employee")).returning({ id: staff.id })).length > 0,
 });
 
 // ---------------------------------------------------------------- departments
@@ -246,7 +314,7 @@ async function departmentRows(where?: SQL): Promise<Department[]> {
       name: departmentsTable.name,
       manager: manager.name,
       isPublic: departmentsTable.isPublic,
-      agents: sql<number>`(select count(*)::int from ${staff} where ${q(staff.departmentId)} = ${q(departmentsTable.id)})`,
+      agents: sql<number>`(select count(*)::int from ${staff} where ${q(staff.departmentId)} = ${q(departmentsTable.id)} and ${q(staff.kind)} = 'agent')`,
       ticketsOpen: countTickets(sql`${q(tickets.departmentId)} = ${q(departmentsTable.id)} and ${ticketIsOpenQ}`),
     })
     .from(departmentsTable)
@@ -281,7 +349,7 @@ export const departments = createResource({
   },
   deleteBlocker: async (id) => {
     const people = await count(db.select({ n: countSql }).from(staff).where(eq(staff.departmentId, id)));
-    if (people) return `This department still has ${plural(people, "agent")}. Move them to another department first.`;
+    if (people) return `This department still has ${people === 1 ? "1 person" : `${people} people`} (agents or employees). Move them to another department first.`;
     const topics = await count(db.select({ n: countSql }).from(helpTopicsTable).where(eq(helpTopicsTable.departmentId, id)));
     if (topics) return `${plural(topics, "help topic")} still route to this department.`;
     const responses = await count(db.select({ n: countSql }).from(cannedResponses).where(eq(cannedResponses.departmentId, id)));
@@ -319,7 +387,7 @@ async function resolveTeamRefs(leadName: string | undefined, memberIds: number[]
   const refs = new References();
   const leadId = await refs.resolve("lead", leadName, agentIdByName, "Unknown or ambiguous agent name");
   if (memberIds?.length) {
-    const found = await db.select({ id: staff.id }).from(staff).where(and(inArray(staff.id, memberIds), inTenant(staff.tenantId)));
+    const found = await db.select({ id: staff.id }).from(staff).where(and(inArray(staff.id, memberIds), inTenant(staff.tenantId), eq(staff.kind, "agent")));
     if (found.length !== new Set(memberIds).size) refs.errors.memberIds = "Unknown team member";
   }
   refs.assert();

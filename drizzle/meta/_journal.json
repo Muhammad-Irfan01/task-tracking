@@ -43,6 +43,13 @@
       "when": 1790683135312,
       "tag": "0005_subscription_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790683721102,
+      "tag": "0006_employee_portal",
+      "breakpoints": true
     }
   ]
 }

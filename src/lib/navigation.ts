@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   Building2,
+  Contact,
   LayoutDashboard,
   LifeBuoy,
   MessageSquareText,
@@ -42,6 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Team",
     items: [
       { href: "/staff", label: "Agents", icon: UserCog },
+      { href: "/employees", label: "Employees", icon: Contact },
       { href: "/departments", label: "Departments", icon: Network },
       { href: "/teams", label: "Teams", icon: UsersRound },
       { href: "/sla", label: "SLA Plans", icon: Timer },

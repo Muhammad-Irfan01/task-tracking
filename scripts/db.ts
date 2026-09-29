@@ -62,7 +62,11 @@ async function wipe() {
 /** Platform super admin from SUPER_ADMIN_NAME / SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD. */
 function superAdminFromEnv() {
   const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.SUPER_ADMIN_PASSWORD;
+  const raw = process.env.SUPER_ADMIN_PASSWORD;
+  // A space or line break pasted into the dashboard would otherwise become part of
+  // the password, and nobody could ever type it on the login form.
+  const password = raw?.trim();
+  if (raw && raw !== password) console.warn("[db] WARNING: SUPER_ADMIN_PASSWORD had leading/trailing spaces or line breaks — they were ignored");
   if (!email || !password) return null;
   const policy = newPassword.safeParse(password);
   if (!policy.success) throw new Error(`SUPER_ADMIN_PASSWORD: ${policy.error.issues[0].message}`);

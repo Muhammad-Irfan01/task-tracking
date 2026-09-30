@@ -24,7 +24,7 @@ Oldest first. To see the full diff of any commit, run `git show <hash>`.
 | 18 | 2026-09-29 | `4c7805e` | **Add an employee request portal** — see below | 52 files, +3,725 / −284 |
 | 19 | 2026-09-29 | `25a837c` | **Add a progress document** — `docs/PROGRESS.md`: what's built and what remains | 1 file, +127 |
 | 20 | 2026-09-30 | `15d448f` | **Let each organization upload its own logo** — see below | 15 files, +2,264 / −10 |
-| 21 | 2026-09-30 | `d8d1cb3` | **Bring the commit history up to date through the logo feature** — this file | 1 file |
+| 21 | 2026-09-30 | `d8d1cb3` | **Bring the commit history up to date through the logo feature** — this file | 1 file, +26 |
 | 22 | 2026-09-30 | `05b5bc3` | **Add a plain-language testing guide** — `docs/TESTING_GUIDE_SIMPLE.md` for non-technical testers | 3 files, +261 / −6 |
 | 23 | 2026-09-30 | `a7ecd88` | **Complete the employee portal** — see below | 32 files, +3,029 / −197 |
 

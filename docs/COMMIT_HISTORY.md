@@ -16,6 +16,14 @@ Oldest first. To see the full diff of any commit, run `git show <hash>`.
 | 10 | 2026-09-28 | `99246f4` | **Refuse to run sessions on Vercel without a real SESSION_SECRET** | 1 file, +18 / −3 |
 | 11 | 2026-09-28 | `80dff3e` | **vercel setup** | 1 file, +1 |
 | 12 | 2026-09-29 | `6160f17` | **Turn the desk into a multi-organization platform** — see below | 54 files, +6,051 / −404 |
+| 13 | 2026-09-29 | `94d904f` | **Add a commit history document** — this file | 1 file, +35 |
+| 14 | 2026-09-29 | `9d71bde` | **Warn instead of failing the build when SUPER_ADMIN_EMAIL is an agent** | 1 file, +5 / −1 |
+| 15 | 2026-09-29 | `0acc5d5` | **Ignore stray whitespace around SUPER_ADMIN_PASSWORD** — trims pasted line breaks and warns | 1 file, +5 / −1 |
+| 16 | 2026-09-29 | `e98573a` | **Give each organization a staff email domain** — agents' emails must be @ the org's domain | 18 files, +2,200 / −29 |
+| 17 | 2026-09-29 | `88b6926` | **Replace seat limits with Small / Medium / Large plans** — 75 / 250 / 1,000 employees | 17 files, +2,141 / −96 |
+| 18 | 2026-09-29 | `4c7805e` | **Add an employee request portal** — see below | 52 files, +3,725 / −284 |
+| 19 | 2026-09-29 | `25a837c` | **Add a progress document** — `docs/PROGRESS.md`: what's built and what remains | 1 file, +127 |
+| 20 | 2026-09-30 | `15d448f` | **Let each organization upload its own logo** — see below | 15 files, +2,264 / −10 |
 
 ## 12 · Multi-organization platform (`6160f17`, branch `multi-tenant-platform`)
 
@@ -29,6 +37,24 @@ Oldest first. To see the full diff of any commit, run `git show <hash>`.
 - **Migrations:** `0002_multi_tenancy` moves existing data into organization #1, and `0003_drop_org_settings` drops the old
   settings table (settings now live on each organization).
 - **Docs:** `docs/PRODUCTION_TESTING.md` (step-by-step test plan) and README updates.
+
+## 18 · Employee request portal (`4c7805e`)
+
+- **Employees** are a new kind of user, invited by their org admin from the Employees page. They sign in to
+  `/portal`, never the desk.
+- **In the portal:** raise tickets to a department (help topics follow the department), reply with attachments,
+  get notified of agent replies and status changes, and mark tickets resolved or reopen them. Employees only see
+  their own tickets.
+- **Migration:** `0006_employee_portal` adds `staff.kind` and links an employee to their customer record.
+
+## 20 · Organization logos (`15d448f`)
+
+- **Upload:** org admins add, replace or remove their company logo under **Settings → Organization**
+  (PNG, JPEG, WebP or GIF, up to 512 KB; SVG is refused because it can carry scripts).
+- **Where it shows:** the organization's desk sidebar and employee portal header. Other organizations, the login
+  page and the platform console keep the default Threadline logo.
+- **Isolation:** `/api/settings/organization/logo` always serves the signed-in user's own organization's logo.
+- **Migration:** `0007_tenant_logo` adds `logo`, `logo_type` and `logo_updated_at` to `tenants`.
 
 ---
 

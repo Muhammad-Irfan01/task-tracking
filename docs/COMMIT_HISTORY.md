@@ -24,6 +24,9 @@ Oldest first. To see the full diff of any commit, run `git show <hash>`.
 | 18 | 2026-09-29 | `4c7805e` | **Add an employee request portal** — see below | 52 files, +3,725 / −284 |
 | 19 | 2026-09-29 | `25a837c` | **Add a progress document** — `docs/PROGRESS.md`: what's built and what remains | 1 file, +127 |
 | 20 | 2026-09-30 | `15d448f` | **Let each organization upload its own logo** — see below | 15 files, +2,264 / −10 |
+| 21 | 2026-09-30 | `d8d1cb3` | **Bring the commit history up to date through the logo feature** — this file | 1 file |
+| 22 | 2026-09-30 | `05b5bc3` | **Add a plain-language testing guide** — `docs/TESTING_GUIDE_SIMPLE.md` for non-technical testers | 3 files, +261 / −6 |
+| 23 | 2026-09-30 | `a7ecd88` | **Complete the employee portal** — see below | 32 files, +3,029 / −197 |
 
 ## 12 · Multi-organization platform (`6160f17`, branch `multi-tenant-platform`)
 
@@ -55,6 +58,20 @@ Oldest first. To see the full diff of any commit, run `git show <hash>`.
   page and the platform console keep the default Threadline logo.
 - **Isolation:** `/api/settings/organization/logo` always serves the signed-in user's own organization's logo.
 - **Migration:** `0007_tenant_logo` adds `logo`, `logo_type` and `logo_updated_at` to `tenants`.
+
+## 23 · Employee portal completed (`a7ecd88`)
+
+- **Internal notes:** agents switch the reply box to *Internal note*. Employees never receive notes: not in the
+  conversation, the message count, attachments or notifications. A note doesn't count as a first response.
+- **Email updates:** employees are emailed when an agent replies or changes a ticket's status (with a link to the
+  ticket); they can turn this off under **Account**.
+- **Attachments on new tickets:** files picked on the New ticket form are added to the ticket's opening message.
+- **Help center (`/portal/help`):** the organization's published knowledge base articles, searchable; matching
+  articles are suggested while typing a ticket subject.
+- **Satisfaction rating:** 1–5 stars and an optional comment once a ticket is resolved; agents see it on the ticket
+  and are notified; reopening clears it.
+- **Migration:** `0008_portal_completion` adds `messages.is_internal`, `tickets.rating_comment` and
+  `user_preferences.email_updates`.
 
 ---
 

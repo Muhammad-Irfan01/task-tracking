@@ -128,4 +128,4 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | 2026-09-29 | `88b6926` | Small / Medium / Large plans |
 | 2026-09-29 | `4c7805e` | Employee request portal |
 | 2026-09-30 | `15d448f` | Organization logos |
-| 2026-09-30 | — | Portal completed: internal notes, employee emails, attachments on new tickets, help center, ratings |
+| 2026-09-30 | `a7ecd88` | Portal completed: internal notes, employee emails, attachments on new tickets, help center, ratings |

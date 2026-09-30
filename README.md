@@ -17,7 +17,7 @@ organizations' data. Emails are unique across the platform, so the email alone d
 Each organization has a **staff email domain** (e.g. `acme.com`, set by the super admin): every admin and agent
 must use `name@acme.com`, a domain belongs to one organization only, and public providers (gmail.com, …) are refused.
 Organizations created before domains existed have none (any email) until one is set.
-There is no public sign-up. See `docs/PRODUCTION_TESTING.md` for the full test plan.
+There is no public sign-up. Testing: `docs/TESTING_GUIDE_SIMPLE.md` (plain-language, for non-technical testers) and `docs/PRODUCTION_TESTING.md` (full technical test plan).
 
 **Stack:** Next.js 16 (App Router) · React 19 · Tailwind CSS v4 · Zustand · Axios · Zod · Drizzle ORM · Postgres (Neon / PGlite) · Motion · Recharts · lucide-react
 

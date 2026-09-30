@@ -184,6 +184,8 @@ export interface SessionUser {
   tenantName: string;
   /** Staff emails must end with @this domain; null = no restriction. */
   tenantEmailDomain: string | null;
+  /** The organization's own logo; null = show the default app logo. */
+  tenantLogoUrl: string | null;
 }
 
 /** What the portal's "New ticket" form can offer: public departments and their help topics. */
@@ -266,6 +268,8 @@ export interface OrgSettings {
   maxAgents: number;
   /** Staff email domain set by the platform; null means any. */
   emailDomain: string | null;
+  /** Null when the organization hasn't uploaded a logo. */
+  logoUrl: string | null;
 }
 
 export interface VolumePoint {

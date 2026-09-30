@@ -50,6 +50,13 @@
       "when": 1790683721102,
       "tag": "0006_employee_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790742199619,
+      "tag": "0007_tenant_logo",
+      "breakpoints": true
     }
   ]
 }

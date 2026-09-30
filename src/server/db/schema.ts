@@ -56,6 +56,11 @@ export const tenants = pgTable(
     /** Small / Medium / Large — sets the employee limit (see PLANS in lib/constants). */
     plan: text("plan", { enum: ["Small", "Medium", "Large"] }).notNull().default("Small"),
     status: text("status", { enum: ["Active", "Suspended"] }).notNull().default("Active"),
+    /** Company logo shown to this organization's agents and employees; null = the default app logo. */
+    logo: bytea("logo"),
+    logoType: text("logo_type"),
+    /** Changes on every upload so browsers refetch instead of showing a cached old logo. */
+    logoUpdatedAt: ts("logo_updated_at"),
     createdAt: createdAt(),
   },
   (t) => [

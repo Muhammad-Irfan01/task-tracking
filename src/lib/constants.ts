@@ -84,6 +84,12 @@ export function planLimit(plan: string) {
 
 export const planLabel = (plan: PlanId) => `${plan} — up to ${planLimit(plan).toLocaleString("en-US")} employees`;
 
+/** Organization logos: raster images only (SVG can carry scripts), kept small since they live in the database. */
+export const ORG_LOGO = {
+  maxBytes: 512 * 1024,
+  types: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+} as const;
+
 export const THEME_STORAGE_KEY = "threadline-theme";
 
 export const SESSION_COOKIE = "threadline_session";

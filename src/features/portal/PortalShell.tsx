@@ -28,7 +28,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-ink-900/[0.06] bg-white/80 backdrop-blur dark:border-paper-100/[0.06] dark:bg-ink-900/80">
         <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link href="/portal" aria-label="Request portal home" className="flex items-center gap-2">
-            <Logo />
+            <Logo src={user.tenantLogoUrl} name={user.tenantName} />
           </Link>
           <span className="hidden truncate text-sm text-ink-900/45 md:inline dark:text-paper-100/45">{user.tenantName} · Requests</span>
           <nav className="ml-2 hidden items-center gap-1 sm:flex">

@@ -19,7 +19,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col gap-6 py-6">
       <div>
-        <Logo />
+        <Logo src={user.tenantLogoUrl} name={user.tenantName} />
         <p className="mt-2 truncate px-2 text-xs font-medium text-ink-900/45 dark:text-paper-100/45" title={user.tenantName}>
           {user.tenantName}
         </p>

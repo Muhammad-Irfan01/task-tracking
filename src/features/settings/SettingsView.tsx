@@ -1,12 +1,12 @@
 "use client";
 
-import { Building, Lock, Moon, Sun } from "lucide-react";
+import { Building, ImageUp, Lock, Moon, Sun, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ComponentType } from "react";
 import { useCurrentUser, useSession } from "@/components/providers/SessionProvider";
 import { Button, Card, Input, PageHeader, Skeleton, Switch, Tabs } from "@/components/ui";
 import { useZodForm } from "@/hooks/useZodForm";
-import { TIMEZONE_OPTIONS } from "@/lib/constants";
+import { ORG_LOGO, TIMEZONE_OPTIONS } from "@/lib/constants";
 import { orgSettingsSchema, passwordSchema, profileSchema } from "@/lib/schemas";
 import { accountService, errorMessage } from "@/services";
 import { refreshLoadedStores, toast, useThemeStore } from "@/store";
@@ -157,6 +157,71 @@ function SecurityTab() {
   );
 }
 
+function OrganizationLogo({ settings, canEdit, onSaved }: { settings: OrgSettings; canEdit: boolean; onSaved: (s: OrgSettings) => void }) {
+  const user = useCurrentUser();
+  const setUser = useSession((state) => state.setUser);
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<"upload" | "remove" | null>(null);
+
+  async function save(action: "upload" | "remove", request: () => Promise<OrgSettings>) {
+    setBusy(action);
+    try {
+      const next = await request();
+      onSaved(next);
+      // The sidebar reads the logo from the session, so it updates right away.
+      setUser({ ...user, tenantLogoUrl: next.logoUrl });
+      toast.success(action === "upload" ? "Logo updated" : "Logo removed");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function onPick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!(ORG_LOGO.types as readonly string[]).includes(file.type)) return toast.error("Logos must be PNG, JPEG, WebP or GIF images");
+    if (file.size > ORG_LOGO.maxBytes) return toast.error(`Logos can be at most ${ORG_LOGO.maxBytes / 1024} KB`);
+    save("upload", () => accountService.uploadOrgLogo(file));
+  }
+
+  return (
+    <div className={`${PANEL} flex-wrap justify-between`}>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-ink-900/[0.08] bg-white p-1.5 dark:border-paper-100/[0.08]">
+          {settings.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- private, per-user image
+            <img src={settings.logoUrl} alt={`${settings.name} logo`} className="max-h-full max-w-full object-contain" />
+          ) : (
+            <ImageUp className="h-5 w-5 text-ink-900/30" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-ink-900 dark:text-paper-100">Company logo</p>
+          <p className="text-xs text-ink-900/50 dark:text-paper-100/50">
+            Shown to your agents and employees. PNG, JPEG, WebP or GIF, up to {ORG_LOGO.maxBytes / 1024} KB.
+          </p>
+        </div>
+      </div>
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <input ref={input} type="file" accept={ORG_LOGO.types.join(",")} className="hidden" onChange={onPick} />
+          {settings.logoUrl && (
+            <Button type="button" variant="secondary" size="sm" loading={busy === "remove"} disabled={busy !== null} onClick={() => save("remove", accountService.removeOrgLogo)}>
+              <Trash2 className="h-4 w-4" /> Remove
+            </Button>
+          )}
+          <Button type="button" variant="secondary" size="sm" loading={busy === "upload"} disabled={busy !== null} onClick={() => input.current?.click()}>
+            <ImageUp className="h-4 w-4" /> {settings.logoUrl ? "Replace" : "Upload"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrganizationForm({ settings, canEdit, onSaved }: { settings: OrgSettings; canEdit: boolean; onSaved: (s: OrgSettings) => void }) {
   const form = useZodForm(orgSettingsSchema, {
     name: settings.name,
@@ -181,6 +246,7 @@ function OrganizationForm({ settings, canEdit, onSaved }: { settings: OrgSetting
           </p>
         </div>
       </div>
+      <OrganizationLogo settings={settings} canEdit={canEdit} onSaved={onSaved} />
       <fieldset disabled={!canEdit} className="space-y-4 disabled:opacity-60">
         <Input label="Workspace name" {...form.field("name")} />
         <Input label="Support email" type="email" {...form.field("supportEmail")} />

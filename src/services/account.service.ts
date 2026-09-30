@@ -33,6 +33,9 @@ export const accountService = {
   savePreferences: (prefs: UserPreferences) => unwrap<UserPreferences>(apiClient.put("/me/preferences", prefs)),
   orgSettings: () => unwrap<OrgSettings>(apiClient.get("/settings/organization")),
   saveOrgSettings: (input: OrgSettingsInput) => unwrap<OrgSettings>(apiClient.patch("/settings/organization", input)),
+  uploadOrgLogo: (file: File) =>
+    unwrap<OrgSettings>(apiClient.put("/settings/organization/logo", file, { headers: { "Content-Type": file.type } })),
+  removeOrgLogo: () => unwrap<OrgSettings>(apiClient.delete("/settings/organization/logo")),
 };
 
 export interface NotificationFeed {

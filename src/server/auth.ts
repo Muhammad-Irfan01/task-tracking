@@ -15,6 +15,7 @@ import type { LoginResult, PlatformUser, SessionUser } from "@/types";
 import { db } from "./db";
 import { departments, staff, superAdmins, tenants } from "./db/schema";
 import { agents, employees } from "./domain/directory";
+import { orgLogoUrl } from "./domain/settings";
 import { forbidden, invalid, unauthorized } from "./errors";
 import { sendMail } from "./mail";
 import { appUrl, findResetToken, issueResetToken, revokeResetTokens } from "./password-reset";
@@ -78,6 +79,7 @@ const sessionColumns = {
   tenantName: tenants.name,
   tenantEmailDomain: tenants.emailDomain,
   tenantStatus: tenants.status,
+  tenantLogoUpdatedAt: tenants.logoUpdatedAt,
   name: staff.name,
   email: staff.email,
   role: staff.role,
@@ -115,6 +117,7 @@ function toSessionUser(row: NonNullable<Awaited<ReturnType<typeof findStaff>>>):
     tenantId: row.tenantId,
     tenantName: row.tenantName,
     tenantEmailDomain: row.tenantEmailDomain,
+    tenantLogoUrl: orgLogoUrl(row.tenantLogoUpdatedAt),
   };
 }
 

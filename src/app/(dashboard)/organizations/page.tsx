@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
-import { OrganizationsView } from "@/features/customers/OrganizationsView";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Organizations" };
-
+/**
+ * Hidden: organization admins don't manage customer companies, and requesters are
+ * grouped under "Independent Customers" automatically. The API stays for the customer
+ * form's company list.
+ */
 export default function Page() {
-  return <OrganizationsView />;
+  redirect("/");
 }

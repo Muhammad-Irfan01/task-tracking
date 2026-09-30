@@ -4,6 +4,7 @@ import { BookOpen, Search, Ticket, UserCog, Users, type LucideIcon } from "lucid
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCurrentUser } from "@/components/providers/SessionProvider";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 import { searchService } from "@/services";
@@ -19,17 +20,20 @@ interface ResultItem {
   icon: LucideIcon;
 }
 
-function flatten(results: SearchResults): ResultItem[] {
+/** Regular agents can't open the Agents page, so a colleague links to their tickets instead. */
+function flatten(results: SearchResults, isAdmin: boolean): ResultItem[] {
+  const agentHref = (name: string) => (isAdmin ? `/staff?q=${encodeURIComponent(name)}` : `/tickets?assignee=${encodeURIComponent(name)}`);
   return [
     ...results.tickets.map((t) => ({ key: `t${t.id}`, href: `/tickets/${t.id}`, label: t.subject, detail: `${t.number} · ${t.status}`, group: "Tickets", icon: Ticket })),
     ...results.customers.map((c) => ({ key: `c${c.id}`, href: `/customers/${c.id}`, label: c.name, detail: c.email, group: "Customers", icon: Users })),
-    ...results.agents.map((a) => ({ key: `a${a.id}`, href: `/staff?q=${encodeURIComponent(a.name)}`, label: a.name, detail: a.dept, group: "Agents", icon: UserCog })),
+    ...results.agents.map((a) => ({ key: `a${a.id}`, href: agentHref(a.name), label: a.name, detail: a.dept, group: "Agents", icon: UserCog })),
     ...results.articles.map((a) => ({ key: `k${a.id}`, href: `/knowledge-base/${a.id}`, label: a.question, detail: a.category, group: "Articles", icon: BookOpen })),
   ];
 }
 
 export function GlobalSearch() {
   const router = useRouter();
+  const { isAdmin } = useCurrentUser();
   const setFilters = useTicketsStore((state) => state.setFilters);
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
@@ -43,12 +47,12 @@ export function GlobalSearch() {
     searchService
       .search(debounced, controller.signal)
       .then((data) => {
-        setResults({ q: debounced, items: flatten(data) });
+        setResults({ q: debounced, items: flatten(data, isAdmin) });
         setActive(-1);
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [debounced]);
+  }, [debounced, isAdmin]);
 
   const items = useMemo(() => (results && results.q === debounced ? results.items : []), [results, debounced]);
   const loading = debounced.length >= 2 && results?.q !== debounced;

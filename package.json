@@ -14,7 +14,9 @@
     "db:setup": "tsx scripts/db.ts setup",
     "db:reset": "tsx scripts/db.ts reset",
     "db:clean": "tsx scripts/db.ts clean",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:logo": "tsx scripts/test-logo-isolation.ts",
+    "test:access": "tsx scripts/test-role-access.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

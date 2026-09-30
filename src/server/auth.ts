@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { PLATFORM_COOKIE, SESSION_COOKIE } from "@/lib/constants";
 import {
@@ -152,6 +153,13 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 export async function requireUser() {
   const user = await getSessionUser();
   if (!user) throw unauthorized();
+  return user;
+}
+
+/** For admin-only desk pages: everyone else is sent to the dashboard. */
+export async function requireAdminPage() {
+  const user = await getSessionUser();
+  if (!user?.isAdmin) redirect("/");
   return user;
 }
 

@@ -45,7 +45,8 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | Replies with attachments (Postgres, or Vercel Blob for large files) and canned responses | ✅ |
 | **Internal notes** on a ticket (only agents see them; they don't count as a first response) | ✅ |
 | Organization **logo** uploaded by the org admin, shown in that org's desk and portal | ✅ |
-| Customers, organizations (customer companies), departments, teams, SLA plans, help topics | ✅ |
+| Customers, departments, teams, SLA plans, help topics (the Organizations page is hidden; requesters are grouped under *Independent Customers*) | ✅ |
+| Role-based pages: regular agents see only daily work; setup pages and changes to setup data are admin-only (`npm run test:access`) | ✅ |
 | Knowledge base (categories and articles), canned responses | ✅ |
 | Dashboard and reports (7 / 30 / 90 days), overdue tracking, global search | ✅ |
 | In-app notifications (assignment, reply, SLA breach) | ✅ |

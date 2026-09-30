@@ -77,19 +77,35 @@ export function platformRoute<P = Record<string, never>>(handler: PlatformHandle
   };
 }
 
+type WriteAccess = { adminWrites?: boolean };
+
+/** With `adminWrites`, any agent may read but only admins may create, edit or delete. */
+function checkWrite(user: SessionUser, { adminWrites = false }: WriteAccess) {
+  if (adminWrites && !user.isAdmin) throw forbidden("Only administrators can change this");
+}
+
 /** GET (list) + POST (create) handlers for a collection endpoint. */
-export function collectionRoutes<V>(resource: Resource<V>) {
+export function collectionRoutes<V>(resource: Resource<V>, access: WriteAccess = {}) {
   return {
     GET: route(async () => ok(await resource.list())),
-    POST: route(async ({ request }) => created(await resource.create(await readJson(request)))),
+    POST: route(async ({ request, user }) => {
+      checkWrite(user, access);
+      return created(await resource.create(await readJson(request)));
+    }),
   };
 }
 
 /** GET / PATCH / DELETE handlers for an item endpoint. */
-export function itemRoutes<V>(resource: Resource<V>) {
+export function itemRoutes<V>(resource: Resource<V>, access: WriteAccess = {}) {
   return {
     GET: route<{ id: string }>(async ({ params }) => ok(await resource.get(params.id))),
-    PATCH: route<{ id: string }>(async ({ request, params }) => ok(await resource.update(params.id, await readJson(request)))),
-    DELETE: route<{ id: string }>(async ({ params }) => ok(await resource.remove(params.id))),
+    PATCH: route<{ id: string }>(async ({ request, params, user }) => {
+      checkWrite(user, access);
+      return ok(await resource.update(params.id, await readJson(request)));
+    }),
+    DELETE: route<{ id: string }>(async ({ params, user }) => {
+      checkWrite(user, access);
+      return ok(await resource.remove(params.id));
+    }),
   };
 }

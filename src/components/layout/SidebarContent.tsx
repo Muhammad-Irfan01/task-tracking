@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { isNavActive, NAV_SECTIONS } from "@/lib/navigation";
+import { isNavActive, navSectionsFor } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useReport } from "@/hooks/useReport";
 import { useCurrentUser } from "@/components/providers/SessionProvider";
@@ -25,7 +25,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </p>
       </div>
       <nav className="flex-1 space-y-6 overflow-y-auto px-2">
-        {NAV_SECTIONS.map((section) => (
+        {navSectionsFor(user).map((section) => (
           <div key={section.label}>
             <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-900/35 dark:text-paper-100/30">
               {section.label}

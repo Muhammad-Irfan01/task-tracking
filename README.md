@@ -8,7 +8,7 @@ A multi-organization help-desk platform (tickets, customers, agents, SLAs, knowl
 | --- | --- | --- |
 | **Super admin** (you, the platform owner) — from `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | `/login` → `/platform` | Create client organizations with their first admin, set the plan (Small 75 / Medium 250 / Large 1000 employees), add more admins, re-send invites, suspend / reactivate / delete organizations. Can't see inside a desk. |
 | **Organization admin** — invited by the super admin | `/login` → their desk | Everything inside their own organization: invite staff (Agents → Add Agent), departments, teams, SLA plans, help topics, settings |
-| **Staff (agent)** — invited by their organization admin | `/login` → their desk | Tickets, customers, knowledge base, reports inside their organization |
+| **Staff (agent)** — invited by their organization admin | `/login` → their desk | Tickets, customers, knowledge base, canned responses, reports inside their organization. The setup pages (Agents, Employees, Departments, Teams, SLA Plans, Help Topics) are hidden and redirect to the dashboard |
 | **Employee** — invited by their organization admin (Employees page) | `/login` → `/portal` | Raise tickets to a department (topics follow the department), reply with attachments, get notified of agent replies and status changes, mark resolved / reopen. Sees only their own tickets and never the desk |
 
 Each organization is isolated: every table carries `tenant_id`, and every query runs inside the signed-in
@@ -117,8 +117,10 @@ Copy `.env.example` to `.env.local` to configure these locally.
   invite can't be sent, the admin is told so instead of seeing a false "emailed" confirmation.
 - **Auth** — signed, httpOnly session cookie; `src/proxy.ts` gates every page and API route, the dashboard
   layout verifies the session server-side (so every page renders dynamically per request). Changing your
-  password signs out your other sessions. Admin-only: managing agents and workspace settings.
-- **Full CRUD** — customers, organizations, agents, departments, teams, SLA plans, help topics,
+  password signs out your other sessions. Admin-only: managing agents, employees and workspace settings, and changing departments, teams, SLA plans,
+  help topics and organizations (any agent can still read them, since ticket screens need them). The sidebar
+  (`src/lib/navigation.ts`, `adminOnly`) and the pages themselves (`requireAdminPage`) follow the same rule.
+- **Full CRUD** — customers, agents, departments, teams, SLA plans, help topics,
   knowledge-base articles & categories, canned responses. Validation is shared (zod) between forms and API.
   Records reference each other by foreign key, so renames show up everywhere instantly; deletes that would
   orphan data are refused with an explanation. Names are unique case-insensitively.

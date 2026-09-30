@@ -1,7 +1,6 @@
 import {
   BarChart3,
   BookOpen,
-  Building2,
   Contact,
   LayoutDashboard,
   LifeBuoy,
@@ -22,6 +21,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Only highlight on an exact path match (used for the root route). */
   exact?: boolean;
+  /** Only organization admins see it; the page and its writes are admin-only too. */
+  adminOnly?: boolean;
 }
 
 export interface NavSection {
@@ -36,23 +37,22 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
       { href: "/tickets", label: "Tickets", icon: Ticket },
       { href: "/customers", label: "Customers", icon: Users },
-      { href: "/organizations", label: "Organizations", icon: Building2 },
     ],
   },
   {
     label: "Team",
     items: [
-      { href: "/staff", label: "Agents", icon: UserCog },
-      { href: "/employees", label: "Employees", icon: Contact },
-      { href: "/departments", label: "Departments", icon: Network },
-      { href: "/teams", label: "Teams", icon: UsersRound },
-      { href: "/sla", label: "SLA Plans", icon: Timer },
+      { href: "/staff", label: "Agents", icon: UserCog, adminOnly: true },
+      { href: "/employees", label: "Employees", icon: Contact, adminOnly: true },
+      { href: "/departments", label: "Departments", icon: Network, adminOnly: true },
+      { href: "/teams", label: "Teams", icon: UsersRound, adminOnly: true },
+      { href: "/sla", label: "SLA Plans", icon: Timer, adminOnly: true },
     ],
   },
   {
     label: "Content",
     items: [
-      { href: "/help-topics", label: "Help Topics", icon: LifeBuoy },
+      { href: "/help-topics", label: "Help Topics", icon: LifeBuoy, adminOnly: true },
       { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
       { href: "/canned-responses", label: "Canned Responses", icon: MessageSquareText },
     ],
@@ -65,6 +65,13 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+/** The sidebar for this user: admin-only pages are left out for regular agents. */
+export function navSectionsFor(user: { isAdmin: boolean }): NavSection[] {
+  return NAV_SECTIONS.map((section) => ({ ...section, items: section.items.filter((item) => user.isAdmin || !item.adminOnly) })).filter(
+    (section) => section.items.length > 0,
+  );
+}
 
 export function isNavActive(pathname: string, item: NavItem) {
   if (item.exact) return pathname === item.href;

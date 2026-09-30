@@ -29,9 +29,10 @@ export function TicketConversation({ ticket, messages }: TicketConversationProps
         loadLimits={loadLimits}
         templates={canned.items.filter((r) => r.enabled)}
         greetingName={ticket.customer}
-        onSend={async (body, files, storage) => {
-          await reply(ticket.id, body, files, storage);
-          toast.success(`Reply sent to ${ticket.customer}`);
+        allowInternal
+        onSend={async (body, files, storage, internal) => {
+          await reply(ticket.id, body, files, storage, internal);
+          toast.success(internal ? "Internal note saved" : `Reply sent to ${ticket.customer}`);
         }}
       />
     </Card>

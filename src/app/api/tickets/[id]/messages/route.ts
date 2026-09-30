@@ -8,6 +8,7 @@ export const GET = route<{ id: string }>(async ({ params }) => ok(await getThrea
 /**
  * Accepts multipart form data: `body`, plus either zero or more `files`
  * (database storage) or an `uploads` JSON array of blob references.
+ * `internal=1` makes it a note only agents see.
  */
 export const POST = route<{ id: string }>(async ({ request, params, user }) => {
   const form = await request.formData().catch(() => {
@@ -17,7 +18,8 @@ export const POST = route<{ id: string }>(async ({ request, params, user }) => {
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   const uploads = blobUploadsSchema.safeParse(parseJson(form.get("uploads")));
   if (!uploads.success) throw badRequest("Invalid attachment list");
-  return created(await addReply(params.id, body, files, uploads.data, user));
+  const internal = form.get("internal") === "1";
+  return created(await addReply(params.id, body, files, uploads.data, user, { internal }));
 });
 
 function parseJson(value: FormDataEntryValue | null) {

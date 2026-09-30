@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
+import { after } from "next/server";
 import { isClosedStatus } from "@/lib/constants";
 import { ticketCreateSchema, ticketUpdateSchema, toFieldErrors, type TicketUpdateInput } from "@/lib/schemas";
 import type { BlobUpload } from "@/lib/schemas";
@@ -14,10 +15,13 @@ import {
   slaPlans as slaPlansT,
   staff,
   tickets,
+  userPreferences,
 } from "../db/schema";
 import { INDEPENDENT_ORG } from "../db/provision";
 import { ticketNumber } from "../db/seed/people";
 import { badRequest, invalid, notFound } from "../errors";
+import { sendMail } from "../mail";
+import { currentAppUrl } from "../password-reset";
 import { parseId, References } from "../resource";
 import { currentTenant, inTenant } from "../tenant";
 import { attachmentLimits, blobMetadata, blobStorageEnabled, deleteBlobs, ticketBlobPrefix } from "../storage";
@@ -39,7 +43,9 @@ const HOUR = 3_600_000;
 
 // ---------------------------------------------------------------- reads
 
-function ticketQuery(where?: SQL) {
+/** `requester`: the portal's view — internal notes aren't counted. */
+function ticketQuery(where?: SQL, { requester = false } = {}) {
+  const counted = requester ? sql`and ${q(messages.isInternal)} = false` : sql``;
   return db
     .select({
       id: tickets.id,
@@ -60,8 +66,9 @@ function ticketQuery(where?: SQL) {
       resolvedAt: tickets.resolvedAt,
       firstResponseAt: tickets.firstResponseAt,
       rating: tickets.rating,
+      ratingComment: tickets.ratingComment,
       isOverdue: ticketIsOverdue,
-      messages: sql<number>`(select count(*)::int from ${messages} where ${q(messages.ticketId)} = ${q(tickets.id)})`,
+      messages: sql<number>`(select count(*)::int from ${messages} where ${q(messages.ticketId)} = ${q(tickets.id)} ${counted})`,
     })
     .from(tickets)
     .innerJoin(departments, eq(departments.id, tickets.departmentId))
@@ -88,13 +95,13 @@ function toTicket(row: TicketRow): Ticket {
   };
 }
 
-export async function listTickets(where?: SQL) {
-  return (await ticketQuery(where).orderBy(desc(tickets.updatedAt))).map(toTicket);
+export async function listTickets(where?: SQL, options?: { requester?: boolean }) {
+  return (await ticketQuery(where, options).orderBy(desc(tickets.updatedAt))).map(toTicket);
 }
 
-export async function getTicket(rawId: string | number) {
+export async function getTicket(rawId: string | number, options?: { requester?: boolean }) {
   const id = parseId(rawId);
-  const [row] = id ? await ticketQuery(eq(tickets.id, id)) : [];
+  const [row] = id ? await ticketQuery(eq(tickets.id, id), options) : [];
   if (!row) throw notFound("Ticket");
   return toTicket(row);
 }
@@ -113,12 +120,14 @@ export async function ticketTitle(rawId: string) {
   return row ? `${ticketNumber(row.id)} · ${row.subject}` : null;
 }
 
-export async function getThread(rawId: string | number): Promise<TicketMessage[]> {
+/** `includeInternal: false` is the requester's view: agents' internal notes are left out entirely. */
+export async function getThread(rawId: string | number, { includeInternal = true } = {}): Promise<TicketMessage[]> {
   const ticket = await ticketRecord(rawId);
   const rows = await db
     .select({
       id: messages.id,
       isStaff: messages.isStaff,
+      isInternal: messages.isInternal,
       staffName: staff.name,
       authorName: messages.authorName,
       customerName: customers.name,
@@ -129,7 +138,7 @@ export async function getThread(rawId: string | number): Promise<TicketMessage[]
     .innerJoin(tickets, eq(tickets.id, messages.ticketId))
     .innerJoin(customers, eq(customers.id, tickets.customerId))
     .leftJoin(staff, eq(staff.id, messages.authorStaffId))
-    .where(eq(messages.ticketId, ticket.id))
+    .where(and(eq(messages.ticketId, ticket.id), includeInternal ? undefined : eq(messages.isInternal, false)))
     .orderBy(asc(messages.createdAt), asc(messages.id));
 
   const files = rows.length
@@ -145,6 +154,7 @@ export async function getThread(rawId: string | number): Promise<TicketMessage[]
     // Names follow renames: staff via the agent record, customers via the ticket's customer.
     author: row.isStaff ? (row.staffName ?? row.authorName) : row.customerName,
     isStaff: row.isStaff,
+    isInternal: row.isInternal,
     created: isoRequired(row.created),
     body: row.body,
     attachments: files
@@ -165,15 +175,35 @@ async function autoAssign(departmentId: number) {
   return inDept ?? (await pick(available))[0];
 }
 
-/** Tells the employee who raised a ticket (if a portal user did) about agent activity. */
-async function notifyRequester(customerId: number, event: { title: string; body: string; ticketId: number }) {
+/**
+ * Tells the employee who raised a ticket (if a portal user did) about agent
+ * activity: in the portal, and by email unless they turned emails off.
+ */
+async function notifyRequester(
+  customerId: number,
+  event: { title: string; body: string; ticketId: number; subject: string; email: string },
+  actor: SessionUser,
+) {
   const [requester] = await db
-    .select({ id: staff.id })
+    .select({ id: staff.id, name: staff.name, email: staff.email, emailUpdates: userPreferences.emailUpdates })
     .from(staff)
-    .where(and(eq(staff.customerId, customerId), eq(staff.kind, "employee"), inTenant(staff.tenantId)))
+    .leftJoin(userPreferences, eq(userPreferences.staffId, staff.id))
+    .where(and(eq(staff.customerId, customerId), eq(staff.kind, "employee"), eq(staff.active, true), inTenant(staff.tenantId)))
     .limit(1);
   if (!requester) return;
-  await notify({ type: "reply", title: event.title, body: event.body, href: `/portal/tickets/${event.ticketId}`, recipientId: requester.id });
+  const href = `/portal/tickets/${event.ticketId}`;
+  await notify({ type: "reply", title: event.title, body: event.body, href, recipientId: requester.id });
+
+  if (requester.emailUpdates === false) return;
+  const url = `${await currentAppUrl()}${href}`;
+  // Sent after the response so a slow mail server never delays the agent.
+  after(() =>
+    sendMail({
+      to: requester.email,
+      subject: `[${ticketNumber(event.ticketId)}] ${event.subject}`,
+      text: `Hi ${requester.name.split(" ")[0]},\n\n${event.email}\n\nView the ticket and reply: ${url}\n\n— The ${actor.tenantName} team\n\nYou get these emails for tickets you raised. Turn them off under Account in the request portal.`,
+    }),
+  );
 }
 
 async function notifyAssignee(ticketId: number, subject: string, assigneeId: number | null, actor: SessionUser) {
@@ -269,17 +299,25 @@ export async function updateTicket(rawId: string, raw: unknown, actor: SessionUs
   if (!nowClosed && wasClosed) {
     // Reopened: clear resolution and restart the SLA clock.
     const grace = topic?.graceHours ?? (await helpTopicGrace(current.helpTopicId));
-    Object.assign(set, { resolvedAt: null, rating: null, dueAt: new Date(now.getTime() + grace * HOUR) });
+    Object.assign(set, { resolvedAt: null, rating: null, ratingComment: null, dueAt: new Date(now.getTime() + grace * HOUR) });
   }
 
   await db.update(tickets).set(set).where(eq(tickets.id, current.id));
   if (assigneeId && assigneeId !== current.assigneeId) await notifyAssignee(current.id, current.subject, assigneeId, actor);
   if (changes.status && changes.status !== current.status && actor.kind !== "employee") {
-    await notifyRequester(current.customerId, {
-      title: `${ticketNumber(current.id)} is now ${changes.status}`,
-      body: current.subject,
-      ticketId: current.id,
-    });
+    await notifyRequester(
+      current.customerId,
+      {
+        title: `${ticketNumber(current.id)} is now ${changes.status}`,
+        body: current.subject,
+        ticketId: current.id,
+        subject: current.subject,
+        email: isClosedStatus(changes.status)
+          ? `Your ticket ${ticketNumber(current.id)} was marked ${changes.status} by ${actor.name}. If you still need help, reopen it from the portal.`
+          : `Your ticket ${ticketNumber(current.id)} is now ${changes.status}.`,
+      },
+      actor,
+    );
   }
   return getTicket(current.id);
 }
@@ -312,29 +350,16 @@ export async function attachmentUploadPrefix(rawId: string) {
 }
 
 /**
- * `files` are posted inline (database storage); `uploads` reference files the
- * browser already put in blob storage. Either way sizes are checked here.
+ * Checks and stores a message's files: `files` are posted inline (database
+ * storage); `uploads` reference files the browser already put in blob storage
+ * under this ticket's prefix. Sizes come from the store, not the client.
  */
-/**
- * Adds a message to a ticket. Agents reply as staff; `asRequester` (the portal)
- * posts as the person who raised the ticket and leaves the SLA clock alone.
- */
-export async function addReply(
-  rawId: string,
-  body: string,
-  files: File[],
-  uploads: BlobUpload[],
-  actor: SessionUser,
-  { asRequester = false } = {},
-) {
-  const ticket = await ticketRecord(rawId);
+async function prepareAttachments(ticketId: number, files: File[], uploads: BlobUpload[]) {
   const limits = attachmentLimits();
-  const text = body.trim();
-  if (!text && files.length === 0 && uploads.length === 0) throw invalid({ body: "Write a reply or attach a file" });
   if (limits.storage === "database" && uploads.length) throw badRequest("File storage isn't configured");
   if (limits.storage === "blob" && files.length) throw badRequest("Upload files to storage before sending the reply");
 
-  const prefix = ticketBlobPrefix(ticket.id);
+  const prefix = ticketBlobPrefix(ticketId);
   const stored = await Promise.all(
     uploads.map(async (upload) => {
       const meta = upload.pathname.startsWith(prefix) ? await blobMetadata(upload.pathname) : null;
@@ -351,17 +376,12 @@ export async function addReply(
     throw badRequest(`Attachments can total at most ${limits.maxTotalBytes / 1024 / 1024} MB per reply`);
   }
 
-  const now = new Date();
-  const [message] = await db
-    .insert(messages)
-    .values({ ticketId: ticket.id, isStaff: !asRequester, authorStaffId: actor.id, authorName: actor.name, body: text, createdAt: now })
-    .returning({ id: messages.id });
-
-  if (files.length || stored.length) {
+  return async (messageId: number) => {
+    if (!files.length && !stored.length) return;
     await db.insert(attachments).values([
       ...(await Promise.all(
         files.map(async (file) => ({
-          messageId: message.id,
+          messageId,
           name: file.name.slice(0, 255),
           size: file.size,
           type: file.type || "application/octet-stream",
@@ -369,19 +389,47 @@ export async function addReply(
         })),
       )),
       ...stored.map((file) => ({
-        messageId: message.id,
+        messageId,
         name: file.name.slice(0, 255),
         size: file.size,
         type: file.type || "application/octet-stream",
         blobPathname: file.pathname,
       })),
     ]);
-  }
+  };
+}
 
+/**
+ * Adds a message to a ticket. Agents reply as staff, or leave an `internal`
+ * note only agents see; `asRequester` (the portal) posts as the person who
+ * raised the ticket and leaves the SLA clock alone.
+ */
+export async function addReply(
+  rawId: string,
+  body: string,
+  files: File[],
+  uploads: BlobUpload[],
+  actor: SessionUser,
+  { asRequester = false, internal = false } = {},
+) {
+  const ticket = await ticketRecord(rawId);
+  const text = body.trim();
+  if (asRequester && internal) throw badRequest("Only agents can add internal notes");
+  if (!text && files.length === 0 && uploads.length === 0) throw invalid({ body: internal ? "Write a note or attach a file" : "Write a reply or attach a file" });
+  const saveFiles = await prepareAttachments(ticket.id, files, uploads);
+
+  const now = new Date();
+  const [message] = await db
+    .insert(messages)
+    .values({ ticketId: ticket.id, isStaff: !asRequester, isInternal: internal, authorStaffId: actor.id, authorName: actor.name, body: text, createdAt: now })
+    .returning({ id: messages.id });
+  await saveFiles(message.id);
+
+  // An internal note isn't a response to the requester: no SLA or status change.
   await db
     .update(tickets)
     .set(
-      asRequester
+      asRequester || internal
         ? { updatedAt: now }
         : {
             updatedAt: now,
@@ -391,18 +439,25 @@ export async function addReply(
     )
     .where(eq(tickets.id, ticket.id));
 
-  if (!asRequester) {
-    await notifyRequester(ticket.customerId, {
-      title: `${actor.name} replied on ${ticketNumber(ticket.id)}`,
-      body: text.slice(0, 80) || "sent an attachment",
-      ticketId: ticket.id,
-    });
+  if (!asRequester && !internal) {
+    const attached = files.length + uploads.length;
+    await notifyRequester(
+      ticket.customerId,
+      {
+        title: `${actor.name} replied on ${ticketNumber(ticket.id)}`,
+        body: text.slice(0, 80) || "sent an attachment",
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        email: `${actor.name} replied to your ticket ${ticketNumber(ticket.id)}:\n\n${text || "(no message)"}${attached ? `\n\n[${attached} attachment${attached === 1 ? "" : "s"} — open the ticket to download]` : ""}`,
+      },
+      actor,
+    );
   }
 
   if (ticket.assigneeId && ticket.assigneeId !== actor.id) {
     await notify({
       type: "reply",
-      title: `New reply on ${ticketNumber(ticket.id)}`,
+      title: `${internal ? "Internal note" : "New reply"} on ${ticketNumber(ticket.id)}`,
       body: `${actor.name}: ${text.slice(0, 80) || "sent an attachment"}`,
       href: `/tickets/${ticket.id}`,
       recipientId: ticket.assigneeId,
@@ -410,19 +465,43 @@ export async function addReply(
   }
 
   const thread = await getThread(ticket.id);
-  return { message: thread.find((m) => m.id === String(message.id))!, ticket: await getTicket(ticket.id) };
+  return {
+    message: thread.find((m) => m.id === String(message.id))!,
+    ticket: await getTicket(ticket.id, { requester: asRequester }),
+  };
+}
+
+/**
+ * Adds files to the message that opened the ticket — how the portal attaches
+ * files picked on the New ticket form (blob uploads need the ticket id first).
+ * Only while the opening message is still the whole conversation.
+ */
+export async function attachToOpeningMessage(ticketId: number, files: File[], uploads: BlobUpload[]) {
+  const thread = await db
+    .select({ id: messages.id, isStaff: messages.isStaff })
+    .from(messages)
+    .where(eq(messages.ticketId, ticketId))
+    .orderBy(asc(messages.createdAt), asc(messages.id))
+    .limit(2);
+  if (thread.length !== 1 || thread[0].isStaff) throw badRequest("Add files in a reply instead");
+  const existing = await db.select({ id: attachments.id }).from(attachments).where(eq(attachments.messageId, thread[0].id)).limit(1);
+  if (existing.length) throw badRequest("Add files in a reply instead");
+  if (!files.length && !uploads.length) throw badRequest("Choose files to attach");
+  const saveFiles = await prepareAttachments(ticketId, files, uploads);
+  await saveFiles(thread[0].id);
+  return getThread(ticketId, { includeInternal: false });
 }
 
 export async function getAttachment(id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound("Attachment");
   // Joined through the ticket so one organization can never read another's files.
   const [row] = await db
-    .select({ file: attachments, customerId: tickets.customerId })
+    .select({ file: attachments, customerId: tickets.customerId, isInternal: messages.isInternal })
     .from(attachments)
     .innerJoin(messages, eq(messages.id, attachments.messageId))
     .innerJoin(tickets, eq(tickets.id, messages.ticketId))
     .where(and(eq(attachments.id, id), inTenant(tickets.tenantId)));
-  const file = row ? { ...row.file, ticketCustomerId: row.customerId } : undefined;
+  const file = row ? { ...row.file, ticketCustomerId: row.customerId, isInternal: row.isInternal } : undefined;
   if (!file) throw notFound("Attachment");
   return file;
 }

@@ -22,9 +22,10 @@ export const ticketsService = {
     });
     return { pathname: blob.pathname, name: file.name.slice(0, 255) };
   },
-  reply: (id: string | number, body: string, files: File[] = [], uploads: BlobUpload[] = []) => {
+  reply: (id: string | number, body: string, files: File[] = [], uploads: BlobUpload[] = [], internal = false) => {
     const form = new FormData();
     form.append("body", body);
+    if (internal) form.append("internal", "1");
     for (const file of files) form.append("files", file);
     if (uploads.length) form.append("uploads", JSON.stringify(uploads));
     return unwrap<{ message: TicketMessage; ticket: Ticket }>(

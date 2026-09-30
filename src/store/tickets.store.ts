@@ -33,7 +33,8 @@ interface TicketsState extends CollectionState<Ticket> {
   createTicket: (input: TicketCreateInput) => Promise<Ticket>;
   updateTicket: (id: number, changes: TicketUpdateInput) => Promise<Ticket>;
   deleteTicket: (id: number) => Promise<void>;
-  reply: (id: number, body: string, files?: File[], storage?: AttachmentStorage) => Promise<TicketMessage>;
+  /** `internal`: a note only agents see. */
+  reply: (id: number, body: string, files?: File[], storage?: AttachmentStorage, internal?: boolean) => Promise<TicketMessage>;
 }
 
 export const DEFAULT_TICKET_FILTERS: TicketFilters = {
@@ -116,11 +117,11 @@ export const useTicketsStore = create<TicketsState>()((set, get) => ({
     refreshLoadedStores("tickets");
   },
 
-  reply: async (id, body, files = [], storage = "database") => {
+  reply: async (id, body, files = [], storage = "database", internal = false) => {
     const { message, ticket } =
       storage === "blob"
-        ? await ticketsService.reply(id, body, [], await Promise.all(files.map((f) => ticketsService.uploadAttachment(id, f))))
-        : await ticketsService.reply(id, body, files);
+        ? await ticketsService.reply(id, body, [], await Promise.all(files.map((f) => ticketsService.uploadAttachment(id, f))), internal)
+        : await ticketsService.reply(id, body, files, [], internal);
     const key = String(id);
     set((state) => {
       const detail = state.details[key] ?? { ...EMPTY_DETAIL, status: "success" as const };

@@ -29,6 +29,12 @@ export const ticketCreateSchema = z.object({
 /** What an employee fills in on the portal; the requester is always themselves. */
 export const portalTicketSchema = ticketCreateSchema.omit({ customerName: true, customerEmail: true });
 
+/** An employee rating their resolved ticket. */
+export const ticketRatingSchema = z.object({
+  rating: z.number("Choose a rating").int().min(1, "Choose a rating").max(5, "Choose a rating"),
+  comment: z.string().trim().max(1000, "Keep it under 1,000 characters").optional().default(""),
+});
+
 export const ticketUpdateSchema = z
   .object({
     status: z.enum(TICKET_STATUS_VALUES, "Unknown status"),
@@ -157,6 +163,8 @@ export const preferencesSchema = z.object({
   reply: z.boolean(),
   sla: z.boolean(),
   digest: z.boolean(),
+  // Optional so clients that predate it keep working; a missing value means "on".
+  emailUpdates: z.boolean().default(true),
 });
 
 export const orgSettingsSchema = z.object({

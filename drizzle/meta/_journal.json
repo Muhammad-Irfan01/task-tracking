@@ -57,6 +57,13 @@
       "when": 1790742199619,
       "tag": "0007_tenant_logo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790743808973,
+      "tag": "0008_portal_completion",
+      "breakpoints": true
     }
   ]
 }

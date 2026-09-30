@@ -284,6 +284,8 @@ export const tickets = pgTable(
     resolvedAt: ts("resolved_at"),
     firstResponseAt: ts("first_response_at"),
     rating: integer("rating"),
+    /** Optional feedback the requester left with their rating. */
+    ratingComment: text("rating_comment"),
   },
   (t) => [
     index("tickets_tenant_updated_idx").on(t.tenantId, t.updatedAt),
@@ -306,6 +308,8 @@ export const messages = pgTable(
     // Snapshot shown if the author record is later removed.
     authorName: text("author_name").notNull(),
     body: text("body").notNull().default(""),
+    /** Agent-only note: never shown to the requester in the portal, never notifies them. */
+    isInternal: boolean("is_internal").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("messages_ticket_idx").on(t.ticketId, t.createdAt)],
@@ -369,6 +373,8 @@ export const userPreferences = pgTable("user_preferences", {
   reply: boolean("reply").notNull().default(true),
   sla: boolean("sla").notNull().default(true),
   digest: boolean("digest").notNull().default(true),
+  /** Portal employees: email me when support replies or changes a ticket's status. */
+  emailUpdates: boolean("email_updates").notNull().default(true),
 });
 
 export const resetTokens = pgTable("reset_tokens", {

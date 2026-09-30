@@ -1,6 +1,6 @@
 # Project Progress — Threadline Task Tracking Platform
 
-_Last updated: 2026-09-29 · Latest commit: `4c7805e` (employee request portal)_
+_Last updated: 2026-09-30 · Employee portal completed (internal notes, email updates, attachments on new tickets, help center, ratings) and organization logos_
 
 ## Summary
 
@@ -43,6 +43,8 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | --- | --- |
 | Tickets: create, auto-assign to the least-busy agent, SLA due times, status and priority, reassign, delete | ✅ |
 | Replies with attachments (Postgres, or Vercel Blob for large files) and canned responses | ✅ |
+| **Internal notes** on a ticket (only agents see them; they don't count as a first response) | ✅ |
+| Organization **logo** uploaded by the org admin, shown in that org's desk and portal | ✅ |
 | Customers, organizations (customer companies), departments, teams, SLA plans, help topics | ✅ |
 | Knowledge base (categories and articles), canned responses | ✅ |
 | Dashboard and reports (7 / 30 / 90 days), overdue tracking, global search | ✅ |
@@ -54,10 +56,14 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | Feature | Status |
 | --- | --- |
 | Employees sign in and see only **My tickets** (Open / Resolved / All, search) | ✅ |
-| **New ticket:** department → that department's topics, priority, subject, details | ✅ |
+| **New ticket:** department → that department's topics, priority, subject, details, **attachments** | ✅ |
+| **Suggested help articles** while typing the subject of a new ticket | ✅ |
+| **Help center** (`/portal/help`): the organization's published knowledge base, searchable by category | ✅ |
 | Ticket page: conversation, replies with attachments, **Mark resolved** / **Reopen** | ✅ |
-| Notified when an agent replies or changes the status; new replies appear within 20 s | ✅ |
-| Account: name, email (within the domain), password | ✅ |
+| **Satisfaction rating** (1–5 stars + optional comment) once resolved; can be changed; cleared on reopen; agents see it | ✅ |
+| Notified when an agent replies or changes the status — in the portal and **by email** (can be turned off under Account) | ✅ |
+| Account: name, email (within the domain), email updates on/off, password | ✅ |
+| Agents' **internal notes** are never sent to the portal (messages, counts, files, notifications) | ✅ |
 | Kept out of the desk (pages redirect, APIs refuse); can't see other employees' tickets or files | ✅ |
 
 ### 5. Accounts and security
@@ -84,19 +90,15 @@ mostly billing, notifications by email, a few safety and convenience features, a
 ### High priority (before selling to customers)
 | # | Item | Why it matters |
 | --- | --- | --- |
-| 1 | **Internal notes for agents** | Today every agent message is visible to the employee. Agents need private notes on a ticket. |
-| 2 | **Email notifications** for ticket activity (new ticket, reply, status change) | Only invites and password resets are emailed now; everything else is in-app only, so people miss updates unless they're signed in. |
+| 2 | **Email notifications for agents** (new ticket, employee reply) | Employees now get emails for replies and status changes; agents still only get in-app notifications. |
 | 3 | **Billing for plans** (e.g. Stripe subscriptions, invoices, trial / expiry) | Plans are set by hand by the super admin; nothing charges customers or stops an unpaid organization. |
 | 4 | **Automated tests** (API isolation tests, main UI flows) | Everything was tested with scripted checks during development, but there's no test suite that runs on each change. |
-| 5 | **Visual check of the new screens** in a real browser (console, Employees page, portal) | Checked by server rendering and API, not visually; the browser extension wasn't connected. Follow Parts 2–4 and 6b of the testing guide. |
+| 5 | **Visual check of the new screens** in a real browser (console, Employees page, portal, help center, ratings, internal notes, logo upload) | Checked by server rendering and API, not visually; the browser extension wasn't connected. Follow Parts 2–4 and 6b of the testing guide. |
 | 6 | **Give your existing "Support Desk" organization an email domain** | Its admin uses `@gmail.com`, so a domain can't be set yet; move its people to company emails first. |
 
 ### Medium priority
 | # | Item |
 | --- | --- |
-| 7 | Attachments when **creating** a ticket in the portal (today you add files in a reply right after) |
-| 8 | Knowledge base visible to employees in the portal (self-help before raising a ticket) |
-| 9 | Employee satisfaction rating after a ticket is resolved (the rating field exists; there's no way to collect it yet) |
 | 10 | Org admins can re-send invites from the desk (today only the super admin console can, or the link is in the server log) |
 | 11 | Ticket numbers per organization (today they're shared across the platform, so an org sees gaps) |
 | 12 | Audit log (who changed what: plans, suspensions, deletions, role changes) |
@@ -108,7 +110,7 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | --- | --- |
 | 15 | Email-to-ticket (send an email to the support address and it becomes a ticket) |
 | 16 | Real-time updates (WebSockets) instead of polling every 20–30 s |
-| 17 | Custom subdomain per organization (e.g. `acme.yourapp.com`) and branding (logo, colors) |
+| 17 | Custom subdomain per organization (e.g. `acme.yourapp.com`) and brand colors (logos are done) |
 | 18 | Data export per organization; configurable plan limits instead of fixed 75 / 250 / 1000 |
 | 19 | SLA business hours and holidays, escalation rules |
 | 20 | Remove the personal `prefix=` line from the committed `.npmrc` (it makes every Vercel build print harmless "npm error config prefix" lines) |
@@ -125,3 +127,5 @@ mostly billing, notifications by email, a few safety and convenience features, a
 | 2026-09-29 | `e98573a` | Staff email domain per organization |
 | 2026-09-29 | `88b6926` | Small / Medium / Large plans |
 | 2026-09-29 | `4c7805e` | Employee request portal |
+| 2026-09-30 | `15d448f` | Organization logos |
+| 2026-09-30 | — | Portal completed: internal notes, employee emails, attachments on new tickets, help center, ratings |

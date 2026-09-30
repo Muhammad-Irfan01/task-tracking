@@ -1,13 +1,25 @@
-import { and, asc, eq } from "drizzle-orm";
-import { portalTicketSchema, toFieldErrors } from "@/lib/schemas";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { isClosedStatus } from "@/lib/constants";
+import { portalTicketSchema, ticketRatingSchema, toFieldErrors } from "@/lib/schemas";
 import type { BlobUpload } from "@/lib/schemas";
-import type { PortalOptions, SessionUser } from "@/types";
+import type { HelpArticle, PortalOptions, SessionUser } from "@/types";
 import { db } from "../db";
-import { departments, helpTopics, staff, tickets } from "../db/schema";
+import { articles, departments, faqCategories, helpTopics, staff, tickets } from "../db/schema";
 import { badRequest, invalid, notFound } from "../errors";
+import { parseId } from "../resource";
+import { attachmentLimits } from "../storage";
 import { inTenant } from "../tenant";
 import { notify } from "./notifications";
-import { addReply, createTicket, getThread, getTicket, listTickets, ticketRecord, updateTicket } from "./tickets";
+import {
+  addReply,
+  attachToOpeningMessage,
+  createTicket,
+  getThread,
+  getTicket,
+  listTickets,
+  ticketRecord,
+  updateTicket,
+} from "./tickets";
 import { customerByEmail } from "./shared";
 import { ticketNumber } from "../db/seed/people";
 
@@ -51,12 +63,13 @@ export async function portalOptions(): Promise<PortalOptions> {
     departments: depts
       .map((d) => ({ name: d.name, topics: topics.filter((t) => t.departmentId === d.id).map((t) => t.name) }))
       .filter((d) => d.topics.length > 0),
+    attachments: attachmentLimits(),
   };
 }
 
 export async function myTickets(user: SessionUser) {
   const customerId = await linkedCustomerId(user);
-  return customerId === null ? [] : listTickets(eq(tickets.customerId, customerId));
+  return customerId === null ? [] : listTickets(eq(tickets.customerId, customerId), { requester: true });
 }
 
 export async function createMyTicket(user: SessionUser, raw: unknown) {
@@ -83,12 +96,19 @@ export async function createMyTicket(user: SessionUser, raw: unknown) {
 
 export async function myTicket(user: SessionUser, rawId: string) {
   const ticket = await ownTicket(user, rawId);
-  return getTicket(ticket.id);
+  return getTicket(ticket.id, { requester: true });
 }
 
+/** Agents' internal notes never leave the server for the portal. */
 export async function myThread(user: SessionUser, rawId: string) {
   const ticket = await ownTicket(user, rawId);
-  return getThread(ticket.id);
+  return getThread(ticket.id, { includeInternal: false });
+}
+
+/** Files picked on the New ticket form, added to its opening message. */
+export async function attachToMyNewTicket(user: SessionUser, rawId: string, files: File[], uploads: BlobUpload[]) {
+  const ticket = await ownTicket(user, rawId);
+  return attachToOpeningMessage(ticket.id, files, uploads);
 }
 
 export async function replyToMyTicket(user: SessionUser, rawId: string, body: string, files: File[], uploads: BlobUpload[]) {
@@ -100,7 +120,8 @@ export async function replyToMyTicket(user: SessionUser, rawId: string, body: st
 export async function setMyTicketStatus(user: SessionUser, rawId: string, status: unknown) {
   if (status !== "Resolved" && status !== "Open") throw badRequest("Status must be Resolved or Open");
   const ticket = await ownTicket(user, rawId);
-  const updated = await updateTicket(String(ticket.id), { status }, user);
+  await updateTicket(String(ticket.id), { status }, user);
+  const updated = await getTicket(ticket.id, { requester: true });
   if (ticket.assigneeId && ticket.assigneeId !== user.id) {
     await notify({
       type: "reply",
@@ -113,9 +134,54 @@ export async function setMyTicketStatus(user: SessionUser, rawId: string, status
   return updated;
 }
 
-/** Throws unless the attachment belongs to one of the employee's tickets. */
-export async function assertOwnAttachment(user: SessionUser, ticketCustomerId: number) {
-  if ((await linkedCustomerId(user)) !== ticketCustomerId) throw notFound("Attachment");
+/** Throws unless the attachment is on one of the employee's tickets, and not on an internal note. */
+export async function assertOwnAttachment(user: SessionUser, file: { ticketCustomerId: number; isInternal: boolean }) {
+  if (file.isInternal || (await linkedCustomerId(user)) !== file.ticketCustomerId) throw notFound("Attachment");
+}
+
+/** Rate a resolved or closed ticket (1–5, optional comment). It can be changed; reopening clears it. */
+export async function rateMyTicket(user: SessionUser, rawId: string, raw: unknown) {
+  const parsed = ticketRatingSchema.safeParse(raw);
+  if (!parsed.success) throw invalid(toFieldErrors(parsed.error));
+  const ticket = await ownTicket(user, rawId);
+  if (!isClosedStatus(ticket.status)) throw badRequest("You can rate a ticket once it's resolved");
+  const { rating, comment } = parsed.data;
+  await db.update(tickets).set({ rating, ratingComment: comment || null }).where(eq(tickets.id, ticket.id));
+  if (ticket.assigneeId && ticket.rating !== rating) {
+    await notify({
+      type: "reply",
+      title: `${user.name} rated ${ticketNumber(ticket.id)} ${"★".repeat(rating)}`,
+      body: comment ? comment.slice(0, 80) : ticket.subject,
+      href: `/tickets/${ticket.id}`,
+      recipientId: ticket.assigneeId,
+    });
+  }
+  return getTicket(ticket.id, { requester: true });
+}
+
+// ------------------------------------------------------------------ help center
+
+/** Published knowledge base articles only; drafts stay in the desk. */
+function helpArticles(where?: ReturnType<typeof eq>) {
+  return db
+    .select({ id: articles.id, category: faqCategories.name, question: articles.question, answer: articles.answer })
+    .from(articles)
+    .innerJoin(faqCategories, eq(faqCategories.id, articles.categoryId))
+    .where(and(inTenant(articles.tenantId), eq(articles.published, true), where))
+    .orderBy(asc(faqCategories.name), asc(articles.question));
+}
+
+export async function listHelpArticles(): Promise<HelpArticle[]> {
+  return helpArticles();
+}
+
+/** One published article; counts the view, as the desk's article page does. */
+export async function readHelpArticle(rawId: string): Promise<HelpArticle> {
+  const id = parseId(rawId);
+  const [article] = id ? await helpArticles(eq(articles.id, id)) : [];
+  if (!article) throw notFound("Article");
+  await db.update(articles).set({ views: sql`${articles.views} + 1` }).where(and(eq(articles.id, article.id), inTenant(articles.tenantId)));
+  return article;
 }
 
 /** For blob uploads from the portal: checks ownership, returns the ticket id. */

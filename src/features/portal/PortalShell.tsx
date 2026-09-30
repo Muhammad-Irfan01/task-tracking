@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/portal", label: "My tickets" },
+  { href: "/portal/help", label: "Help center" },
   { href: "/portal/account", label: "Account" },
 ];
 

@@ -1,3 +1,4 @@
+import type { AttachmentLimits } from "@/lib/schemas";
 import type { PlanId } from "@/lib/constants";
 
 export type TicketStatus =
@@ -42,6 +43,8 @@ export interface Ticket {
   firstResponseAt: string | null;
   /** Customer satisfaction score (1–5) left after resolution. */
   rating: number | null;
+  /** Optional feedback left with the rating. */
+  ratingComment: string | null;
   /** Computed: still open and past `dueAt`. */
   isOverdue: boolean;
   messages: number;
@@ -51,6 +54,8 @@ export interface TicketMessage {
   id: string;
   author: string;
   isStaff: boolean;
+  /** Agent-only note; the portal never receives these. */
+  isInternal: boolean;
   created: string;
   body: string;
   attachments: Attachment[];
@@ -191,6 +196,16 @@ export interface SessionUser {
 /** What the portal's "New ticket" form can offer: public departments and their help topics. */
 export interface PortalOptions {
   departments: { name: string; topics: string[] }[];
+  /** Limits for files attached to a new ticket. */
+  attachments: AttachmentLimits;
+}
+
+/** A published knowledge base article as employees see it in the portal's help center. */
+export interface HelpArticle {
+  id: number;
+  category: string;
+  question: string;
+  answer: string;
 }
 
 /** A portal user who raises and follows their own tickets. */
@@ -255,6 +270,8 @@ export interface UserPreferences {
   reply: boolean;
   sla: boolean;
   digest: boolean;
+  /** Portal employees: email updates about their tickets. */
+  emailUpdates: boolean;
 }
 
 export interface OrgSettings {

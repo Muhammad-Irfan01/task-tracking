@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, MessageSquareText, Paperclip, Send, X } from "lucide-react";
+import { FileText, Lock, MessageSquareText, Paperclip, Send, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { FadeIn } from "@/components/motion/FadeIn";
@@ -52,11 +52,15 @@ export function MessageList({ messages, staffLabel = "Agent", requesterLabel }: 
     <div className="space-y-5">
       {messages.map((message, i) => (
         <FadeIn key={message.id} index={Math.min(i, 10)} step={0.04} offset={8} className="flex gap-3">
-          <Avatar name={message.author} size="sm" color={message.isStaff ? "bg-brand-500" : "bg-slate-400"} />
+          <Avatar name={message.author} size="sm" color={message.isInternal ? "bg-amber-500" : message.isStaff ? "bg-brand-500" : "bg-slate-400"} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-medium text-ink-900 dark:text-paper-100">{message.author}</p>
-              {(message.isStaff ? staffLabel : requesterLabel) && (
+              {message.isInternal ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                  <Lock className="h-2.5 w-2.5" /> Internal note
+                </span>
+              ) : (message.isStaff ? staffLabel : requesterLabel) && (
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
@@ -71,7 +75,12 @@ export function MessageList({ messages, staffLabel = "Agent", requesterLabel }: 
               </span>
             </div>
             {message.body && (
-              <div className="surface mt-1.5 whitespace-pre-line rounded-xl px-4 py-3 text-sm leading-relaxed text-ink-800 dark:text-paper-100/85">
+              <div
+                className={cn(
+                  "mt-1.5 whitespace-pre-line rounded-xl px-4 py-3 text-sm leading-relaxed text-ink-800 dark:text-paper-100/85",
+                  message.isInternal ? "border border-dashed border-amber-500/40 bg-amber-500/[0.06]" : "surface",
+                )}
+              >
                 {message.body}
               </div>
             )}
@@ -89,6 +98,72 @@ export function MessageList({ messages, staffLabel = "Agent", requesterLabel }: 
   );
 }
 
+const mb = (bytes: number) => bytes / 1024 / 1024;
+
+/** Files picked for one message, kept within the server's attachment limits. */
+export function useAttachmentSelection(limits: AttachmentLimits) {
+  const [files, setFiles] = useState<File[]>([]);
+
+  function addFiles(list: FileList | File[]) {
+    const next = [...files];
+    const rejected: string[] = [];
+    for (const file of Array.from(list)) {
+      const total = next.reduce((sum, f) => sum + f.size, 0) + file.size;
+      if (next.length >= limits.maxFiles || file.size > limits.maxBytes || total > limits.maxTotalBytes) rejected.push(file.name);
+      else next.push(file);
+    }
+    if (rejected.length) {
+      const perFile = limits.maxBytes < limits.maxTotalBytes ? `, ${mb(limits.maxBytes)} MB each` : "";
+      toast.error(`${rejected.join(", ")} not added — up to ${limits.maxFiles} files and ${mb(limits.maxTotalBytes)} MB per message${perFile}`);
+    }
+    setFiles(next);
+  }
+
+  return {
+    files,
+    addFiles,
+    remove: (index: number) => setFiles((current) => current.filter((_, j) => j !== index)),
+    clear: () => setFiles([]),
+  };
+}
+
+/** The picked files as removable chips. */
+export function SelectedFiles({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+  return (
+    <AnimatePresence initial={false}>
+      {files.length > 0 && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className="overflow-hidden"
+        >
+          <div className="flex flex-wrap gap-2 pt-3">
+            {files.map((file, i) => (
+              <span
+                key={`${file.name}-${i}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink-900/[0.04] py-1 pl-2.5 pr-1 text-xs dark:bg-paper-100/[0.06]"
+              >
+                <Paperclip className="h-3 w-3" />
+                <span className="max-w-40 truncate">{file.name}</span>
+                <span className="text-ink-900/40 dark:text-paper-100/40">{formatBytes(file.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemove(i)}
+                  aria-label={`Remove ${file.name}`}
+                  className="rounded p-0.5 hover:bg-ink-900/10 dark:hover:bg-paper-100/10"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 export interface ReplyTemplate {
   id: number;
   title: string;
@@ -100,7 +175,10 @@ interface ReplyComposerProps {
   submitLabel?: string;
   /** Where the attachment limits for this ticket come from. */
   loadLimits: () => Promise<AttachmentLimits>;
-  onSend: (body: string, files: File[], storage: AttachmentStorage) => Promise<void>;
+  /** `internal` is true when an agent sends it as an internal note. */
+  onSend: (body: string, files: File[], storage: AttachmentStorage, internal: boolean) => Promise<void>;
+  /** Agent desk only: offer "Internal note" next to the reply. */
+  allowInternal?: boolean;
   /** Agent desk only: canned responses offered above the box. */
   templates?: ReplyTemplate[];
   /** Name used for the greeting when a template starts the reply. */
@@ -108,14 +186,23 @@ interface ReplyComposerProps {
 }
 
 /** Reply textarea with drag-and-drop attachments, checked against the server's limits. */
-export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, onSend, templates = [], greetingName }: ReplyComposerProps) {
+export function ReplyComposer({
+  label,
+  submitLabel = "Send reply",
+  loadLimits,
+  onSend,
+  templates = [],
+  greetingName,
+  allowInternal = false,
+}: ReplyComposerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [internal, setInternal] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
   // Database limits are the safe default until the server says blob storage is on.
   const [limits, setLimits] = useState<AttachmentLimits>(ATTACHMENT_LIMITS.database);
+  const { files, addFiles, remove, clear } = useAttachmentSelection(limits);
 
   useEffect(() => {
     let active = true;
@@ -126,23 +213,6 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
       active = false;
     };
   }, [loadLimits]);
-
-  function addFiles(list: FileList | File[]) {
-    const incoming = Array.from(list);
-    const mb = (bytes: number) => bytes / 1024 / 1024;
-    const next = [...files];
-    const rejected: string[] = [];
-    for (const file of incoming) {
-      const total = next.reduce((sum, f) => sum + f.size, 0) + file.size;
-      if (next.length >= limits.maxFiles || file.size > limits.maxBytes || total > limits.maxTotalBytes) rejected.push(file.name);
-      else next.push(file);
-    }
-    if (rejected.length) {
-      const perFile = limits.maxBytes < limits.maxTotalBytes ? `, ${mb(limits.maxBytes)} MB each` : "";
-      toast.error(`${rejected.join(", ")} not added — up to ${limits.maxFiles} files and ${mb(limits.maxTotalBytes)} MB per reply${perFile}`);
-    }
-    setFiles(next);
-  }
 
   function onDrop(event: DragEvent) {
     event.preventDefault();
@@ -161,9 +231,9 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
     if (!draft.trim() && files.length === 0) return;
     setSending(true);
     try {
-      await onSend(draft, files, limits.storage);
+      await onSend(draft, files, limits.storage, internal);
       setDraft("");
-      setFiles([]);
+      clear();
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -176,6 +246,7 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
       className={cn(
         "relative mt-6 rounded-xl border-t border-ink-900/[0.06] pt-4 transition-colors dark:border-paper-100/[0.06]",
         dragging && "bg-brand-500/5",
+        internal && "bg-amber-500/[0.04]",
       )}
       onDragOver={(e) => {
         e.preventDefault();
@@ -185,10 +256,38 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
       onDrop={onDrop}
     >
       <div className="mb-1.5 flex items-center justify-between gap-3">
-        <label htmlFor="reply" className="text-sm font-medium text-ink-700 dark:text-paper-100/80">
-          {label}
-        </label>
-        {templates.length > 0 && (
+        {allowInternal ? (
+          <div role="radiogroup" aria-label="Message type" className="inline-flex rounded-lg bg-ink-900/[0.04] p-0.5 text-sm dark:bg-paper-100/[0.06]">
+            {[
+              { value: false, text: label },
+              { value: true, text: "Internal note" },
+            ].map((option) => (
+              <button
+                key={option.text}
+                type="button"
+                role="radio"
+                aria-checked={internal === option.value}
+                onClick={() => setInternal(option.value)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors",
+                  internal === option.value
+                    ? option.value
+                      ? "bg-white text-amber-600 shadow-sm dark:bg-ink-800 dark:text-amber-400"
+                      : "bg-white text-ink-900 shadow-sm dark:bg-ink-800 dark:text-paper-100"
+                    : "text-ink-900/50 hover:text-ink-900 dark:text-paper-100/50 dark:hover:text-paper-100",
+                )}
+              >
+                {option.value && <Lock className="h-3.5 w-3.5" />}
+                {option.text}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <label htmlFor="reply" className="text-sm font-medium text-ink-700 dark:text-paper-100/80">
+            {label}
+          </label>
+        )}
+        {templates.length > 0 && !internal && (
           <div className="flex items-center gap-1.5">
             <MessageSquareText className="h-3.5 w-3.5 text-ink-900/40 dark:text-paper-100/40" />
             <Select
@@ -209,7 +308,12 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
       </div>
       <Textarea
         id="reply"
-        placeholder={`Type your response… (Ctrl+Enter to send, drop files to attach — up to ${limits.maxBytes / 1024 / 1024} MB)`}
+        aria-label={allowInternal ? (internal ? "Internal note" : label) : undefined}
+        placeholder={
+          internal
+            ? "Only agents see internal notes — the requester is never shown or notified. (Ctrl+Enter to save)"
+            : `Type your response… (Ctrl+Enter to send, drop files to attach — up to ${limits.maxBytes / 1024 / 1024} MB)`
+        }
         value={draft}
         rows={5}
         onChange={(e) => setDraft(e.target.value)}
@@ -218,36 +322,7 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
         }}
       />
 
-      <AnimatePresence initial={false}>
-        {files.length > 0 && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="flex flex-wrap gap-2 pt-3">
-              {files.map((file, i) => (
-                <span
-                  key={`${file.name}-${i}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-ink-900/[0.04] py-1 pl-2.5 pr-1 text-xs dark:bg-paper-100/[0.06]"
-                >
-                  <Paperclip className="h-3 w-3" />
-                  <span className="max-w-40 truncate">{file.name}</span>
-                  <span className="text-ink-900/40 dark:text-paper-100/40">{formatBytes(file.size)}</span>
-                  <button
-                    onClick={() => setFiles((current) => current.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${file.name}`}
-                    className="rounded p-0.5 hover:bg-ink-900/10 dark:hover:bg-paper-100/10"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <SelectedFiles files={files} onRemove={remove} />
 
       <div className="mt-3 flex items-center justify-between">
         <input
@@ -267,8 +342,13 @@ export function ReplyComposer({ label, submitLabel = "Send reply", loadLimits, o
         >
           <Paperclip className="h-4 w-4" /> Attach files
         </button>
-        <Button onClick={send} loading={sending} disabled={!draft.trim() && files.length === 0}>
-          <Send className="h-4 w-4" /> {submitLabel}
+        <Button
+          onClick={send}
+          loading={sending}
+          disabled={!draft.trim() && files.length === 0}
+          className={internal ? "bg-amber-500 hover:bg-amber-600" : undefined}
+        >
+          {internal ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />} {internal ? "Save note" : submitLabel}
         </Button>
       </div>
     </div>

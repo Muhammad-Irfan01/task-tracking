@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
+import { headers } from "next/headers";
 import { db } from "./db";
 import { resetTokens, staff, tenants } from "./db/schema";
 
@@ -46,6 +47,14 @@ export async function findResetToken(token: string) {
  * Base URL for links in emails. Taken from APP_URL rather than the request's
  * Host header, which an attacker could spoof to steal reset tokens.
  */
+/** The app's public URL for links in emails sent while handling a request. */
+export async function currentAppUrl() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (/^(localhost|127\.)/.test(host) ? "http" : "https");
+  return appUrl(`${proto}://${host}`);
+}
+
 export function appUrl(fallbackOrigin: string) {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL && process.env.VERCEL_ENV === "production") {

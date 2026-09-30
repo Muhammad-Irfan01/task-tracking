@@ -141,6 +141,7 @@ export function buildTickets({ customers, staff, helpTopics, slaPlans }: TicketS
       resolvedAt: closed ? new Date(updated).toISOString() : null,
       firstResponseAt: new Date(firstResponse).toISOString(),
       rating: closed && ratingRoll < 0.8 ? (ratingRoll < 0.08 ? 2 : ratingRoll < 0.2 ? 3 : ratingRoll < 0.5 ? 4 : 5) : null,
+      ratingComment: null,
       messages,
     };
     tickets.push(ticket);
@@ -158,11 +159,13 @@ function buildThread(ticket: TicketRecord, count: number): MessageRecord[] {
 
   return Array.from({ length: count }, (_, i) => {
     const isStaff = i % 2 === 1;
+    const isInternal = false;
     let time = start + ((end - start) * i) / Math.max(1, count - 1);
     if (i === 0) time = start;
     if (i === 1) time = firstReply;
     return {
       id: `${ticket.id}-${i}`,
+      isInternal,
       author: isStaff ? ticket.assignee : ticket.customer,
       isStaff,
       created: new Date(Math.max(time, firstReply * Number(i >= 1))).toISOString(),

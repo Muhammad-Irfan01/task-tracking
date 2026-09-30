@@ -5,13 +5,13 @@ import { notificationReads, notifications, tickets, userPreferences } from "../d
 import { ticketNumber } from "../db/seed/people";
 import { isoRequired, ticketIsOverdue } from "./shared";
 
-const DEFAULT_PREFERENCES: UserPreferences = { assigned: true, reply: true, sla: true, digest: true };
+const DEFAULT_PREFERENCES: UserPreferences = { assigned: true, reply: true, sla: true, digest: true, emailUpdates: true };
 const STORED_WINDOW = 200;
 
 export async function getPreferences(userId: number): Promise<UserPreferences> {
   const [row] = await db.select().from(userPreferences).where(eq(userPreferences.staffId, userId));
   if (!row) return DEFAULT_PREFERENCES;
-  return { assigned: row.assigned, reply: row.reply, sla: row.sla, digest: row.digest };
+  return { assigned: row.assigned, reply: row.reply, sla: row.sla, digest: row.digest, emailUpdates: row.emailUpdates };
 }
 
 export async function setPreferences(userId: number, prefs: UserPreferences) {

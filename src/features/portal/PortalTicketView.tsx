@@ -1,17 +1,107 @@
 "use client";
 
-import { CheckCircle2, FileQuestionMark, RotateCcw } from "lucide-react";
+import { CheckCircle2, FileQuestionMark, RotateCcw, Star } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Badge, BackLink, Button, Card, EmptyState, LinkButton, PriorityDot, RowSkeleton, Skeleton } from "@/components/ui";
+import { Badge, BackLink, Button, Card, EmptyState, LinkButton, PriorityDot, RowSkeleton, Skeleton, Textarea } from "@/components/ui";
 import { MessageList, ReplyComposer } from "@/features/tickets/conversation";
 import { useIsClient } from "@/hooks/useIsClient";
 import { isClosedStatus } from "@/lib/constants";
-import { formatDateTime, relativeTime } from "@/lib/utils";
+import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { errorMessage, portalService } from "@/services";
 import { confirm, toast } from "@/store";
 import type { Ticket, TicketMessage } from "@/types";
 
 const POLL_MS = 20_000;
+const RATING_LABELS = ["", "Very poor", "Poor", "Okay", "Good", "Excellent"];
+
+/** After a ticket is resolved: how did support do? (1–5 stars and an optional comment; can be changed.) */
+function RateTicket({ ticket, onRated }: { ticket: Ticket; onRated: (t: Ticket) => void }) {
+  const [editing, setEditing] = useState(!ticket.rating);
+  const [rating, setRating] = useState(ticket.rating ?? 0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState(ticket.ratingComment ?? "");
+  const [saving, setSaving] = useState(false);
+  const shown = hover || rating;
+
+  async function submit() {
+    setSaving(true);
+    try {
+      onRated(await portalService.rate(ticket.id, rating, comment));
+      setEditing(false);
+      toast.success("Thanks for your feedback!");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing && ticket.rating) {
+    return (
+      <Card className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div>
+          <p className="text-sm font-medium text-ink-900 dark:text-paper-100">
+            You rated this{" "}
+            <span className="text-amber-500" aria-label={`${ticket.rating} out of 5`}>
+              {"★".repeat(ticket.rating)}
+              <span className="text-ink-900/20 dark:text-paper-100/20">{"★".repeat(5 - ticket.rating)}</span>
+            </span>
+          </p>
+          {ticket.ratingComment && <p className="mt-1 text-sm text-ink-900/60 dark:text-paper-100/60">“{ticket.ratingComment}”</p>}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+          Change
+        </Button>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="space-y-3 p-5">
+      <div>
+        <h2 className="font-display font-semibold text-ink-900 dark:text-paper-100">How did we do?</h2>
+        <p className="text-sm text-ink-900/50 dark:text-paper-100/50">Your rating helps the team improve. Only they see it.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <div role="radiogroup" aria-label="Rating" className="flex" onMouseLeave={() => setHover(0)}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={rating === value}
+              aria-label={`${value} — ${RATING_LABELS[value]}`}
+              onMouseEnter={() => setHover(value)}
+              onClick={() => setRating(value)}
+              className="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-brand-500"
+            >
+              <Star className={cn("h-7 w-7 transition-colors", value <= shown ? "fill-amber-400 text-amber-400" : "text-ink-900/20 dark:text-paper-100/20")} />
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-ink-900/60 dark:text-paper-100/60">{RATING_LABELS[shown]}</span>
+      </div>
+      <Textarea
+        aria-label="Comment (optional)"
+        rows={2}
+        maxLength={1000}
+        placeholder="Anything you'd like to add? (optional)"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        {ticket.rating && (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        )}
+        <Button size="sm" onClick={submit} loading={saving} disabled={!rating}>
+          Send feedback
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
 export function PortalTicketView({ id }: { id: string }) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -126,6 +216,8 @@ export function PortalTicketView({ id }: { id: string }) {
               </div>
             )}
           </Card>
+
+          {ticket && closed && <RateTicket key={`${ticket.id}-${ticket.rating ?? 0}`} ticket={ticket} onRated={setTicket} />}
 
           <Card className="p-5">
             <h2 className="mb-4 font-display font-semibold text-ink-900 dark:text-paper-100">

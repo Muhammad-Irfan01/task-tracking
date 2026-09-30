@@ -87,9 +87,17 @@ export function TicketDetailView({ id }: { id: string }) {
                   First response: {ticket.firstResponseAt ? relativeTime(ticket.firstResponseAt) : "awaiting agent"}
                 </span>
                 {ticket.rating && (
-                  <span className="text-ink-900/50 dark:text-paper-100/50">Customer rating: {"★".repeat(ticket.rating)}</span>
+                  <span className="text-ink-900/50 dark:text-paper-100/50">
+                    Customer rating: <span className="text-amber-500">{"★".repeat(ticket.rating)}</span>
+                    {"☆".repeat(5 - ticket.rating)}
+                  </span>
                 )}
               </div>
+            )}
+            {ticket?.ratingComment && (
+              <blockquote className="mt-3 rounded-lg border-l-2 border-amber-500 bg-amber-500/[0.06] px-3 py-2 text-sm text-ink-900/70 dark:text-paper-100/70">
+                “{ticket.ratingComment}”
+              </blockquote>
             )}
             {!ticket && (
               <div className="space-y-2">

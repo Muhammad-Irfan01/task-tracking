@@ -9,7 +9,7 @@ _Last updated: 2026-09-29 · Latest commit: `4c7805e` (employee request portal)_
 | **Requested scope** | ✅ **Built:** multi-organization platform, super admin, org admins, staff, email domains, plans, and the employee portal |
 | **Production readiness** | 🟡 **Mostly there.** Works end to end, but the gaps in "What remains" should be closed before selling widely |
 | **Live URL** | https://task-tracking-flax.vercel.app |
-| **Test plan** | `docs/PRODUCTION_TESTING.md` (step-by-step, Parts 1–9 plus 6b) |
+| **Test plans** | `docs/TESTING_GUIDE_SIMPLE.md` (plain language, for non-technical testers) · `docs/PRODUCTION_TESTING.md` (full technical plan) |
 | **Commit log** | `docs/COMMIT_HISTORY.md` |
 
 Rough estimate: **about 75–80% of a sellable product.** All the core flows you asked for are done. What's left is

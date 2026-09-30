@@ -30,8 +30,11 @@ outlook.com, …) can't be used as a domain. Organizations created before this r
 allowed) until you set one.
 
 > **For testing you need a domain whose mailboxes you can read** (e.g. your company domain `gulfdesks.com`),
-> because invites go to `name@<domain>`. If you don't have one, use a made-up domain like `acme.test` and copy the
-> invite links from the console (they're shown whenever the email can't be delivered).
+> because invites go to `name@<domain>`. **Made-up domains like `acme.test` don't work in production:** Gmail
+> accepts the invite and it bounces later, so the console thinks it was sent and never shows the link. The
+> examples below use `acme.test` for readability — replace it with your real domain (plus-aliases such as
+> `you+acmeadmin@yourcompany.com` work if your mail provider supports them). For the two-organization isolation
+> test (Part 6) you need a second real domain; if you don't have one, skip Part 6 and rely on Part 6b.
 
 > **This is your live database.** Everything you create is real data. Create test organizations with names
 > starting with `[TEST]` and delete them in Part 9. Deleting an organization removes all of its data.
@@ -101,9 +104,8 @@ name, so your existing admin and agents keep working. In `/platform` it's the or
 > Forgot the super admin password? Change `SUPER_ADMIN_PASSWORD` in Vercel and redeploy. The build updates it.
 
 **Get ready for testing:**
-- Test domains for the organizations, e.g. `acme.test` and `beta.test`. You can't receive mail at made-up
-  domains, so **copy each invite link from the console dialog** (it appears when the email can't be delivered)
-  and open it yourself. Use a real company domain instead if you want to test real invite emails.
+- Test mailboxes on a **real company domain** you can read (see the note at the top): one each for the Acme admin,
+  agent and two employees. A second real domain is only needed for Part 6.
 - Three browser windows, so three people can be signed in at once: a normal window (super admin), a private
   window (Acme users), and a different browser or profile (Beta users).
 - Keep **Vercel → Logs** open in a tab, to catch server errors.

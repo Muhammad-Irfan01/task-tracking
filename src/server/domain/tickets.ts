@@ -14,6 +14,8 @@ import {
   organizations,
   slaPlans as slaPlansT,
   staff,
+  ticketCategories,
+  ticketSubcategories,
   tickets,
   userPreferences,
 } from "../db/schema";
@@ -55,6 +57,8 @@ function ticketQuery(where?: SQL, { requester = false } = {}) {
       priority: tickets.priority,
       department: departments.name,
       topic: helpTopics.name,
+      category: ticketCategories.name,
+      subcategory: ticketSubcategories.name,
       assignee: staff.name,
       customer: customers.name,
       customerEmail: customers.email,
@@ -75,6 +79,8 @@ function ticketQuery(where?: SQL, { requester = false } = {}) {
     .innerJoin(helpTopics, eq(helpTopics.id, tickets.helpTopicId))
     .innerJoin(customers, eq(customers.id, tickets.customerId))
     .innerJoin(organizations, eq(organizations.id, customers.organizationId))
+    .leftJoin(ticketCategories, eq(ticketCategories.id, tickets.categoryId))
+    .leftJoin(ticketSubcategories, eq(ticketSubcategories.id, tickets.subcategoryId))
     .leftJoin(staff, eq(staff.id, tickets.assigneeId))
     .where(and(inTenant(tickets.tenantId), where));
 }
@@ -165,6 +171,37 @@ export async function getThread(rawId: string | number, { includeInternal = true
 
 // ---------------------------------------------------------------- mutations
 
+/**
+ * Resolves category and sub-category names within the department ("" = none).
+ * With `required`, a department that has categories needs one, and a category
+ * that has sub-categories needs one too.
+ */
+async function resolveCategory(departmentId: number, category: string, subcategory: string, { required = false } = {}) {
+  const categories = await db
+    .select({ id: ticketCategories.id, name: ticketCategories.name })
+    .from(ticketCategories)
+    .where(and(eq(ticketCategories.departmentId, departmentId), inTenant(ticketCategories.tenantId)));
+  if (!category) {
+    if (required && categories.length) throw invalid({ category: "Choose a category" });
+    if (subcategory) throw invalid({ subcategory: "Choose a category first" });
+    return { categoryId: null, subcategoryId: null };
+  }
+  const match = categories.find((c) => c.name.toLowerCase() === category.toLowerCase());
+  if (!match) throw invalid({ category: "Choose a category from this department" });
+
+  const subcategories = await db
+    .select({ id: ticketSubcategories.id, name: ticketSubcategories.name })
+    .from(ticketSubcategories)
+    .where(eq(ticketSubcategories.categoryId, match.id));
+  if (!subcategory) {
+    if (required && subcategories.length) throw invalid({ subcategory: "Choose a sub-category" });
+    return { categoryId: match.id, subcategoryId: null };
+  }
+  const sub = subcategories.find((s) => s.name.toLowerCase() === subcategory.toLowerCase());
+  if (!sub) throw invalid({ subcategory: "Choose a sub-category from this category" });
+  return { categoryId: match.id, subcategoryId: sub.id };
+}
+
 /** Least-loaded available agent in the department, falling back to anyone available. */
 async function autoAssign(departmentId: number) {
   const openCount = sql<number>`(select count(*)::int from ${tickets} where ${q(tickets.assigneeId)} = ${q(staff.id)} and ${ticketIsOpenQ})`;
@@ -226,6 +263,7 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
   const departmentId = await refs.resolve("department", input.department, departmentIdByName, "Unknown department");
   const topic = await refs.resolve("topic", input.topic, helpTopicByName, "Unknown help topic");
   refs.assert();
+  const { categoryId, subcategoryId } = await resolveCategory(departmentId!, input.category, input.subcategory, { required: true });
 
   // New requesters become customer records so they show up in the directory.
   let customer = await customerByEmail(input.customerEmail);
@@ -253,6 +291,8 @@ export async function createTicket(raw: unknown, actor: SessionUser) {
       priority: input.priority,
       departmentId: departmentId!,
       helpTopicId: topic!.id,
+      categoryId,
+      subcategoryId,
       assigneeId,
       customerId: customer!.id,
       source: "Web",
@@ -292,6 +332,11 @@ export async function updateTicket(rawId: string, raw: unknown, actor: SessionUs
   if (departmentId) set.departmentId = departmentId;
   if (topic) set.helpTopicId = topic.id;
   if (assigneeId) set.assigneeId = assigneeId;
+  // Categories belong to a department, so moving the ticket re-checks (or clears) them.
+  const departmentChanged = Boolean(departmentId && departmentId !== current.departmentId);
+  if (departmentChanged || changes.category !== undefined || changes.subcategory !== undefined) {
+    Object.assign(set, await resolveCategory(departmentId ?? current.departmentId, changes.category ?? "", changes.subcategory ?? ""));
+  }
 
   const wasClosed = isClosedStatus(current.status);
   const nowClosed = isClosedStatus(changes.status ?? current.status);
@@ -476,7 +521,7 @@ export async function addReply(
  * files picked on the New ticket form (blob uploads need the ticket id first).
  * Only while the opening message is still the whole conversation.
  */
-export async function attachToOpeningMessage(ticketId: number, files: File[], uploads: BlobUpload[]) {
+export async function attachToOpeningMessage(ticketId: number, files: File[], uploads: BlobUpload[], { includeInternal = false } = {}) {
   const thread = await db
     .select({ id: messages.id, isStaff: messages.isStaff })
     .from(messages)
@@ -489,7 +534,7 @@ export async function attachToOpeningMessage(ticketId: number, files: File[], up
   if (!files.length && !uploads.length) throw badRequest("Choose files to attach");
   const saveFiles = await prepareAttachments(ticketId, files, uploads);
   await saveFiles(thread[0].id);
-  return getThread(ticketId, { includeInternal: false });
+  return getThread(ticketId, { includeInternal });
 }
 
 export async function getAttachment(id: string) {

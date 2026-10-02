@@ -1,6 +1,18 @@
-import { and, eq, getTableName, sql, type Column, type SQL } from "drizzle-orm";
+import { and, asc, eq, getTableName, sql, type Column, type SQL } from "drizzle-orm";
+import type { TicketCategory } from "@/types";
 import { db } from "../db";
-import { customers, departments, faqCategories, helpTopics, organizations, slaPlans, staff, tickets } from "../db/schema";
+import {
+  customers,
+  departments,
+  faqCategories,
+  helpTopics,
+  organizations,
+  slaPlans,
+  staff,
+  ticketCategories,
+  ticketSubcategories,
+  tickets,
+} from "../db/schema";
 import { inTenant } from "../tenant";
 
 /**
@@ -28,6 +40,25 @@ export async function count(query: Promise<{ n: number }[]>) {
 }
 
 export const countSql = sql<number>`count(*)::int`;
+
+/** Each department's ticket categories with their sub-categories, in the order they were added. */
+export async function categoriesByDepartment() {
+  const rows = await db
+    .select({ departmentId: ticketCategories.departmentId, category: ticketCategories.name, subcategory: ticketSubcategories.name })
+    .from(ticketCategories)
+    .leftJoin(ticketSubcategories, eq(ticketSubcategories.categoryId, ticketCategories.id))
+    .where(inTenant(ticketCategories.tenantId))
+    .orderBy(asc(ticketCategories.id), asc(ticketSubcategories.id));
+  const byDepartment = new Map<number, TicketCategory[]>();
+  for (const row of rows) {
+    const list = byDepartment.get(row.departmentId) ?? [];
+    let category = list.find((c) => c.name === row.category);
+    if (!category) list.push((category = { name: row.category, subcategories: [] }));
+    if (row.subcategory) category.subcategories.push(row.subcategory);
+    byDepartment.set(row.departmentId, list);
+  }
+  return byDepartment;
+}
 
 // ------------------------------------------------------------ name → id lookups
 // The API speaks in display names (e.g. assignee "Priya Nair"); these resolve them.

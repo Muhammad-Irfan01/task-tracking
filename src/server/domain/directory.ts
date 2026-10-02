@@ -33,6 +33,7 @@ import { createResource, plural, References } from "../resource";
 import { currentTenant, inTenant } from "../tenant";
 import {
   agentIdByName,
+  categoriesByDepartment,
   count,
   countSql,
   countTickets,
@@ -308,6 +309,7 @@ export const employees = createResource({
 const manager = alias(staff, "manager");
 
 async function departmentRows(where?: SQL): Promise<Department[]> {
+  const categories = categoriesByDepartment();
   const rows = await db
     .select({
       id: departmentsTable.id,
@@ -321,7 +323,8 @@ async function departmentRows(where?: SQL): Promise<Department[]> {
     .leftJoin(manager, eq(manager.id, departmentsTable.managerId))
     .where(and(inTenant(departmentsTable.tenantId), where))
     .orderBy(asc(departmentsTable.id));
-  return rows.map((row) => ({ ...row, manager: row.manager ?? "Unassigned" }));
+  const byDepartment = await categories;
+  return rows.map((row) => ({ ...row, manager: row.manager ?? "Unassigned", categories: byDepartment.get(row.id) ?? [] }));
 }
 
 async function resolveManager(name: string | undefined) {

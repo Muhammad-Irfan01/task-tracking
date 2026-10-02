@@ -17,7 +17,7 @@ import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { connect, type Database } from "../src/server/db/client";
-import { claimDefaultDepartment, defaultDepartment, provisionTenant } from "../src/server/db/provision";
+import { addDefaultDepartments, claimDefaultDepartment, defaultDepartment, provisionTenant } from "../src/server/db/provision";
 import * as t from "../src/server/db/schema";
 import { cannedResponses, faqArticles, faqCategories } from "../src/server/db/seed/content";
 import { departments, helpTopics, organizations, slaPlans, staff, teams } from "../src/server/db/seed/directory";
@@ -51,7 +51,7 @@ async function insertAll<T>(insert: (rows: T[]) => Promise<unknown>, rows: T[], 
 
 const TABLES_BY_DEPENDENCY = [
   "rate_limits", "reset_tokens", "notification_reads", "notifications", "user_preferences", "attachments",
-  "messages", "tickets", "canned_responses", "articles", "faq_categories", "help_topics", "sla_plans",
+  "messages", "tickets", "ticket_subcategories", "ticket_categories", "canned_responses", "articles", "faq_categories", "help_topics", "sla_plans",
   "team_members", "teams", "customers", "organizations", "staff", "departments", "tenants", "super_admins",
 ];
 
@@ -228,6 +228,7 @@ async function seed(database: Database) {
   for (const table of ["tenants", "organizations", "departments", "staff", "teams", "sla_plans", "help_topics", "faq_categories", "articles", "canned_responses", "customers", "tickets"]) {
     await database.execute(sql.raw(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), (SELECT MAX(id) FROM "${table}"))`));
   }
+  await addDefaultDepartments(database, tenantId, id(plans, "Standard SLA"));
   log(`seeded ${agents.length} agents, ${customers.length} customers, ${tickets.length} tickets`);
 
   // Portal users: they raise tickets from /portal and never see the desk.

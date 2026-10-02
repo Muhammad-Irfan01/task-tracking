@@ -30,6 +30,9 @@ export interface Ticket {
   priority: TicketPriority;
   department: string;
   topic: string;
+  /** Category and sub-category within the department; null when none was chosen. */
+  category: string | null;
+  subcategory: string | null;
   assignee: string;
   customer: string;
   customerEmail: string;
@@ -99,11 +102,19 @@ export interface Agent {
   openTickets: number;
 }
 
+/** A ticket category of a department and the sub-categories under it. */
+export interface TicketCategory {
+  name: string;
+  subcategories: string[];
+}
+
 export interface Department {
   id: number;
   name: string;
   manager: string;
   isPublic: boolean;
+  /** Read-only here; categories are offered when a ticket is raised to the department. */
+  categories: TicketCategory[];
   /** Computed from staff and tickets. */
   agents: number;
   ticketsOpen: number;
@@ -195,7 +206,7 @@ export interface SessionUser {
 
 /** What the portal's "New ticket" form can offer: public departments and their help topics. */
 export interface PortalOptions {
-  departments: { name: string; topics: string[] }[];
+  departments: { name: string; topics: string[]; categories: TicketCategory[] }[];
   /** Limits for files attached to a new ticket. */
   attachments: AttachmentLimits;
 }

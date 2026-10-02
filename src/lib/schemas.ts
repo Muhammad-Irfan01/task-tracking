@@ -22,6 +22,9 @@ export const ticketCreateSchema = z.object({
   customerEmail: email,
   department: required("Department"),
   topic: required("Help topic"),
+  /** Required (server-side) when the department has categories; "" = none. */
+  category: z.string().trim().max(120).optional().default(""),
+  subcategory: z.string().trim().max(120).optional().default(""),
   priority: z.enum(TICKET_PRIORITY_VALUES, "Choose a priority"),
   message: z.string().trim().min(1, "Please describe the issue").max(10_000),
 });
@@ -42,6 +45,9 @@ export const ticketUpdateSchema = z
     assignee: required("Assignee"),
     department: required("Department"),
     topic: required("Help topic"),
+    /** Sent together ("" = none); changing the department without them clears both. */
+    category: z.string().trim().max(120),
+    subcategory: z.string().trim().max(120),
   })
   .partial();
 

@@ -51,3 +51,9 @@ export function describeDelta(metric: Metric, kind: DeltaKind, { lowerIsBetter =
   const direction = kind === "duration" ? "" : diff > 0 ? " higher" : " lower";
   return { delta: `${text}${direction} vs ${period}`, positive: improved, trend: diff > 0 ? ("up" as const) : ("down" as const) };
 }
+
+/** "Hardware › Printer & Scanner", or "—" when the ticket has no category. */
+export function categoryLabel(ticket: { category: string | null; subcategory: string | null }) {
+  if (!ticket.category) return "—";
+  return ticket.subcategory ? `${ticket.category} › ${ticket.subcategory}` : ticket.category;
+}

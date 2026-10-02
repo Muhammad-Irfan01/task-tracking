@@ -20,11 +20,13 @@ export const TICKET_PRIORITIES: {
   name: TicketPriority;
   color: string;
   urgency: number;
+  /** Shown next to the priority when a ticket is raised, so people pick the right one. */
+  description: string;
 }[] = [
-  { id: 1, name: "Low", color: "#64748B", urgency: 1 },
-  { id: 2, name: "Normal", color: "#4F46E5", urgency: 2 },
-  { id: 3, name: "High", color: "#F59E0B", urgency: 3 },
-  { id: 4, name: "Emergency", color: "#EF4444", urgency: 4 },
+  { id: 1, name: "Low", color: "#64748B", urgency: 1, description: "Whenever there's time" },
+  { id: 2, name: "Normal", color: "#4F46E5", urgency: 2, description: "Needed in the usual time" },
+  { id: 3, name: "High", color: "#F59E0B", urgency: 3, description: "Blocking part of the work" },
+  { id: 4, name: "Emergency", color: "#EF4444", urgency: 4, description: "Blocking work completely" },
 ];
 
 export const TICKET_SOURCES: TicketSource[] = [

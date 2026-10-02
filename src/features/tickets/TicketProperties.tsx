@@ -11,8 +11,12 @@ import type { TicketUpdateInput } from "@/lib/schemas";
 import { errorMessage } from "@/services";
 import { toast, useDepartmentsStore, useHelpTopicsStore, useStaffStore, useTicketsStore } from "@/store";
 import type { Ticket } from "@/types";
+import { CategoryFields } from "./CategoryFields";
 
-type Editable = Required<Pick<Ticket, "status" | "priority" | "assignee" | "department" | "topic">>;
+type Editable = Required<Pick<Ticket, "status" | "priority" | "assignee" | "department" | "topic">> & {
+  category: string;
+  subcategory: string;
+};
 
 const pickEditable = (t: Ticket): Editable => ({
   status: t.status,
@@ -20,7 +24,11 @@ const pickEditable = (t: Ticket): Editable => ({
   assignee: t.assignee,
   department: t.department,
   topic: t.topic,
+  category: t.category ?? "",
+  subcategory: t.subcategory ?? "",
 });
+
+const CATEGORY_KEYS = ["department", "category", "subcategory"] as const;
 
 export function TicketProperties({ ticket }: { ticket: Ticket }) {
   const router = useRouter();
@@ -38,6 +46,10 @@ export function TicketProperties({ ticket }: { ticket: Ticket }) {
   const changes = Object.fromEntries(
     Object.entries(overrides).filter(([key, value]) => saved[key as keyof Editable] !== value),
   ) as TicketUpdateInput;
+  // The server checks category and sub-category against the department, so they travel together.
+  if (CATEGORY_KEYS.some((key) => key in changes)) {
+    for (const key of CATEGORY_KEYS) changes[key] = draft[key];
+  }
   const dirty = Object.keys(changes).length > 0;
 
   const update = <K extends keyof Editable>(key: K, value: Editable[K]) => setOverrides((o) => ({ ...o, [key]: value }));
@@ -84,7 +96,11 @@ export function TicketProperties({ ticket }: { ticket: Ticket }) {
           </option>
         ))}
       </Select>
-      <Select label="Department" value={draft.department} onChange={(e) => update("department", e.target.value)}>
+      <Select
+        label="Department"
+        value={draft.department}
+        onChange={(e) => setOverrides((o) => ({ ...o, department: e.target.value, category: "", subcategory: "" }))}
+      >
         {departments.items.length === 0 && <option>{draft.department}</option>}
         {departments.items.map((d) => (
           <option key={d.id}>{d.name}</option>
@@ -96,6 +112,12 @@ export function TicketProperties({ ticket }: { ticket: Ticket }) {
           <option key={t.id}>{t.name}</option>
         ))}
       </Select>
+      <CategoryFields
+        categories={departments.items.find((d) => d.name === draft.department)?.categories ?? []}
+        category={draft.category}
+        subcategory={draft.subcategory}
+        onChange={(category, subcategory) => setOverrides((o) => ({ ...o, category, subcategory }))}
+      />
       <div className="flex items-center gap-2 pt-1 text-sm">
         <PriorityDot priority={draft.priority} pulse />
         <span className="text-ink-900/60 dark:text-paper-100/60">Current urgency level</span>

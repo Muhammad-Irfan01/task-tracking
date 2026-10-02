@@ -16,12 +16,12 @@ import type {
 export type CustomerRecord = Omit<Customer, "tickets">;
 export type OrganizationRecord = Omit<Organization, "users">;
 export type AgentRecord = Omit<Agent, "resolvedThisMonth" | "openTickets">;
-export type DepartmentRecord = Omit<Department, "agents" | "ticketsOpen">;
+export type DepartmentRecord = Omit<Department, "agents" | "ticketsOpen" | "categories">;
 export type TeamRecord = Omit<Team, "members">;
 export type SlaPlanRecord = Omit<SlaPlan, "tickets">;
 export type HelpTopicRecord = Omit<HelpTopic, "ticketsThisMonth">;
 export type FaqCategoryRecord = Omit<FaqCategory, "count">;
-export type TicketRecord = Omit<Ticket, "isOverdue">;
+export type TicketRecord = Omit<Ticket, "isOverdue" | "category" | "subcategory">;
 
 export interface MessageRecord extends Omit<TicketMessage, "attachments"> {
   attachmentIds: string[];

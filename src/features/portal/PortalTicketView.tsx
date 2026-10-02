@@ -6,6 +6,7 @@ import { Badge, BackLink, Button, Card, EmptyState, LinkButton, PriorityDot, Row
 import { MessageList, ReplyComposer } from "@/features/tickets/conversation";
 import { useIsClient } from "@/hooks/useIsClient";
 import { isClosedStatus } from "@/lib/constants";
+import { categoryLabel } from "@/lib/format";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { errorMessage, portalService } from "@/services";
 import { confirm, toast } from "@/store";
@@ -252,6 +253,7 @@ export function PortalTicketView({ id }: { id: string }) {
               {[
                 ["Department", ticket.department],
                 ["Topic", ticket.topic],
+                ["Category", categoryLabel(ticket)],
                 [
                   "Priority",
                   <span key="p" className="inline-flex items-center gap-2">

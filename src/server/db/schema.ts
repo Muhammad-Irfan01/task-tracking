@@ -214,6 +214,34 @@ export const helpTopics = pgTable(
   (t) => [uniqueLower("help_topics", t.tenantId, t.name)],
 );
 
+/** What a ticket is about within its department (e.g. IT → Hardware). */
+export const ticketCategories = pgTable(
+  "ticket_categories",
+  {
+    id: serial("id").primaryKey(),
+    tenantId: tenantId(),
+    departmentId: integer("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+  },
+  (t) => [uniqueIndex("ticket_categories_name_lower_unique").on(t.departmentId, sql`lower(${t.name})`)],
+);
+
+/** A narrower choice under a category (e.g. Hardware → Printer & Scanner). */
+export const ticketSubcategories = pgTable(
+  "ticket_subcategories",
+  {
+    id: serial("id").primaryKey(),
+    tenantId: tenantId(),
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => ticketCategories.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+  },
+  (t) => [uniqueIndex("ticket_subcategories_name_lower_unique").on(t.categoryId, sql`lower(${t.name})`)],
+);
+
 export const faqCategories = pgTable(
   "faq_categories",
   {
@@ -272,6 +300,9 @@ export const tickets = pgTable(
     helpTopicId: integer("help_topic_id")
       .notNull()
       .references(() => helpTopics.id, { onDelete: "restrict" }),
+    // Optional: older tickets and departments without categories have none.
+    categoryId: integer("category_id").references(() => ticketCategories.id, { onDelete: "set null" }),
+    subcategoryId: integer("subcategory_id").references(() => ticketSubcategories.id, { onDelete: "set null" }),
     // Set null so removing an agent leaves their closed tickets "Unassigned".
     assigneeId: integer("assignee_id").references(() => staff.id, { onDelete: "set null" }),
     customerId: integer("customer_id")

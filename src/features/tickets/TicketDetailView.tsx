@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { isClosedStatus } from "@/lib/constants";
+import { categoryLabel } from "@/lib/format";
 import { useIsClient } from "@/hooks/useIsClient";
 import { useCustomersStore, useTicketsStore } from "@/store";
 import { useCollection } from "@/hooks/useCollection";
@@ -136,6 +137,7 @@ export function TicketDetailView({ id }: { id: string }) {
                     ["Organization", ticket.organization],
                     ["Department", ticket.department],
                     ["Help topic", ticket.topic],
+                    ["Category", categoryLabel(ticket)],
                     ["Source", ticket.source],
                     ["Assigned to", ticket.assignee],
                   ].map(([term, value]) => (

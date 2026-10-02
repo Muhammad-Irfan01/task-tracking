@@ -3,8 +3,9 @@
 import { BookOpen, ExternalLink, Paperclip, Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { BackLink, Button, Card, EmptyState, Input, LinkButton, Select, Skeleton, Textarea } from "@/components/ui";
+import { CategoryFields, categoryErrors } from "@/features/tickets/CategoryFields";
 import { SelectedFiles, useAttachmentSelection } from "@/features/tickets/conversation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useZodForm } from "@/hooks/useZodForm";
@@ -13,13 +14,6 @@ import { ATTACHMENT_LIMITS, portalTicketSchema, type PortalTicketInput } from "@
 import { errorMessage, portalService } from "@/services";
 import { toast } from "@/store";
 import type { HelpArticle, PortalOptions } from "@/types";
-
-const PRIORITY_HINTS: Record<string, string> = {
-  Low: "Whenever there's time",
-  Normal: "Needed in the usual time",
-  High: "Blocking part of my work",
-  Emergency: "Blocking my work completely",
-};
 
 const STOP_WORDS = new Set(["the", "and", "for", "with", "not", "can't", "cannot", "won't", "does", "doesn't", "how", "what", "when", "my", "our", "your", "from", "this", "that", "have", "need", "into"]);
 
@@ -52,6 +46,8 @@ export function NewTicketView() {
     subject: "",
     department: "",
     topic: "",
+    category: "",
+    subcategory: "",
     priority: "Normal",
     message: "",
   } satisfies PortalTicketInput);
@@ -76,14 +72,29 @@ export function NewTicketView() {
   const subject = useDebounce(values.subject, 300);
   const suggestions = useMemo(() => relatedArticles(articles, subject), [articles, subject]);
 
-  const topics = options?.departments.find((d) => d.name === values.department)?.topics ?? [];
+  const department = options?.departments.find((d) => d.name === values.department);
+  const topics = department?.topics ?? [];
+  const categories = department?.categories ?? [];
 
   function chooseDepartment(name: string) {
     set("department", name);
     set("topic", options?.departments.find((d) => d.name === name)?.topics[0] ?? "");
+    chooseCategory("", "");
   }
 
-  const onSubmit = form.handleSubmit(async (input) => {
+  function chooseCategory(category: string, subcategory: string) {
+    set("category", category);
+    set("subcategory", subcategory);
+  }
+
+  function onSubmit(event: FormEvent) {
+    const missing = categoryErrors(categories, values.category ?? "", values.subcategory ?? "");
+    if (!missing) return submit(event);
+    event.preventDefault();
+    form.setErrors(missing);
+  }
+
+  const submit = form.handleSubmit(async (input) => {
     const ticket = await portalService.create(input);
     if (attachments.files.length) {
       try {
@@ -137,11 +148,21 @@ export function NewTicketView() {
                   <option key={d.name}>{d.name}</option>
                 ))}
               </Select>
-              <Select label="Topic" {...form.field("topic")}>
-                {topics.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </Select>
+              {/* With a single topic there's nothing to choose. */}
+              {topics.length > 1 && (
+                <Select label="Topic" {...form.field("topic")}>
+                  {topics.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </Select>
+              )}
+              <CategoryFields
+                categories={categories}
+                category={values.category ?? ""}
+                subcategory={values.subcategory ?? ""}
+                onChange={chooseCategory}
+                errors={form.errors}
+              />
             </div>
             <Input label="Subject" placeholder="Short summary, e.g. “Laptop won't connect to VPN”" {...form.field("subject")} />
             {suggestions.length > 0 && (
@@ -167,7 +188,7 @@ export function NewTicketView() {
             <Select label="Priority" {...form.field("priority")}>
               {TICKET_PRIORITIES.map((p) => (
                 <option key={p.id} value={p.name}>
-                  {p.name} — {PRIORITY_HINTS[p.name]}
+                  {p.name} — {p.description}
                 </option>
               ))}
             </Select>

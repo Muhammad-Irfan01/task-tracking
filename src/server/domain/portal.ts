@@ -20,7 +20,7 @@ import {
   ticketRecord,
   updateTicket,
 } from "./tickets";
-import { customerByEmail } from "./shared";
+import { categoriesByDepartment, customerByEmail } from "./shared";
 import { ticketNumber } from "../db/seed/people";
 
 /**
@@ -47,7 +47,7 @@ async function ownTicket(user: SessionUser, rawId: string | number) {
 
 /** Departments open to employees (public ones) with the help topics routed to each. */
 export async function portalOptions(): Promise<PortalOptions> {
-  const [depts, topics] = await Promise.all([
+  const [depts, topics, categories] = await Promise.all([
     db
       .select({ id: departments.id, name: departments.name })
       .from(departments)
@@ -58,10 +58,15 @@ export async function portalOptions(): Promise<PortalOptions> {
       .from(helpTopics)
       .where(inTenant(helpTopics.tenantId))
       .orderBy(asc(helpTopics.name)),
+    categoriesByDepartment(),
   ]);
   return {
     departments: depts
-      .map((d) => ({ name: d.name, topics: topics.filter((t) => t.departmentId === d.id).map((t) => t.name) }))
+      .map((d) => ({
+        name: d.name,
+        topics: topics.filter((t) => t.departmentId === d.id).map((t) => t.name),
+        categories: categories.get(d.id) ?? [],
+      }))
       .filter((d) => d.topics.length > 0),
     attachments: attachmentLimits(),
   };

@@ -1,6 +1,6 @@
 import { blobUploadsSchema } from "@/lib/schemas";
 import { badRequest } from "@/server/errors";
-import { addReply, getThread } from "@/server/domain/tickets";
+import { addReply, attachToOpeningMessage, getThread, ticketRecord } from "@/server/domain/tickets";
 import { created, ok, route } from "@/server/http";
 
 export const GET = route<{ id: string }>(async ({ params }) => ok(await getThread(params.id)));
@@ -8,7 +8,8 @@ export const GET = route<{ id: string }>(async ({ params }) => ok(await getThrea
 /**
  * Accepts multipart form data: `body`, plus either zero or more `files`
  * (database storage) or an `uploads` JSON array of blob references.
- * `internal=1` makes it a note only agents see.
+ * `internal=1` makes it a note only agents see; `opening=1` adds the files to
+ * the ticket's first message instead (the New ticket form) and returns the thread.
  */
 export const POST = route<{ id: string }>(async ({ request, params, user }) => {
   const form = await request.formData().catch(() => {
@@ -18,6 +19,10 @@ export const POST = route<{ id: string }>(async ({ request, params, user }) => {
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   const uploads = blobUploadsSchema.safeParse(parseJson(form.get("uploads")));
   if (!uploads.success) throw badRequest("Invalid attachment list");
+  if (form.get("opening") === "1") {
+    const ticket = await ticketRecord(params.id);
+    return ok(await attachToOpeningMessage(ticket.id, files, uploads.data, { includeInternal: true }));
+  }
   const internal = form.get("internal") === "1";
   return created(await addReply(params.id, body, files, uploads.data, user, { internal }));
 });

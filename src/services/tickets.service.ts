@@ -1,5 +1,5 @@
 import { upload } from "@vercel/blob/client";
-import type { AttachmentLimits, BlobUpload, TicketCreateInput, TicketUpdateInput } from "@/lib/schemas";
+import type { AttachmentLimits, AttachmentStorage, BlobUpload, TicketCreateInput, TicketUpdateInput } from "@/lib/schemas";
 import type { Ticket, TicketMessage } from "@/types";
 import { apiClient, unwrap } from "./api-client";
 
@@ -11,6 +11,20 @@ export const ticketsService = {
   remove: (id: string | number) => unwrap<{ id: number }>(apiClient.delete(`/tickets/${id}`)),
   messages: (id: string | number) => unwrap<TicketMessage[]>(apiClient.get(`/tickets/${id}/messages`)),
   attachmentLimits: (id: string | number) => unwrap<AttachmentLimits>(apiClient.get(`/tickets/${id}/attachments`)),
+  /** Limits for the New ticket form, before there's a ticket id. */
+  newTicketAttachmentLimits: () => unwrap<AttachmentLimits>(apiClient.get("/tickets/attachment-limits")),
+  /** Files chosen on the New ticket form, added to the ticket's opening message once it exists. */
+  attachToNewTicket: async (id: string | number, files: File[], storage: AttachmentStorage) => {
+    const form = new FormData();
+    form.append("opening", "1");
+    if (storage === "blob") {
+      const uploads = await Promise.all(files.map((file) => ticketsService.uploadAttachment(id, file)));
+      form.append("uploads", JSON.stringify(uploads));
+    } else {
+      for (const file of files) form.append("files", file);
+    }
+    return unwrap<TicketMessage[]>(apiClient.post(`/tickets/${id}/messages`, form, { headers: { "Content-Type": "multipart/form-data" } }));
+  },
   /** Sends a file straight to blob storage (bypassing the API body limit) and returns its reference. */
   uploadAttachment: async (id: string | number, file: File): Promise<BlobUpload> => {
     const name = file.name.replace(/[\\/]/g, "_") || "file";

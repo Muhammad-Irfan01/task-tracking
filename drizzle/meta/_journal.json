@@ -64,6 +64,13 @@
       "when": 1790743808973,
       "tag": "0008_portal_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790943509868,
+      "tag": "0009_default_departments",
+      "breakpoints": true
     }
   ]
 }

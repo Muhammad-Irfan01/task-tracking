@@ -108,6 +108,23 @@ export interface TicketCategory {
   subcategories: string[];
 }
 
+/** A category as managed on the Ticket Categories page. */
+export interface TicketCategoryEntry {
+  id: number;
+  name: string;
+  department: string;
+  /** Computed: tickets filed under it. */
+  tickets: number;
+  subcategories: TicketSubcategoryEntry[];
+}
+
+export interface TicketSubcategoryEntry {
+  id: number;
+  categoryId: number;
+  name: string;
+  tickets: number;
+}
+
 export interface Department {
   id: number;
   name: string;

@@ -10,6 +10,8 @@ import {
   slaPlansService,
   staffService,
   teamsService,
+  ticketCategoriesService,
+  ticketSubcategoriesService,
 } from "@/services";
 import { createCrudStore } from "./create-collection-store";
 
@@ -26,3 +28,6 @@ export const useHelpTopicsStore = createCrudStore("helpTopics", helpTopicsServic
 export const useArticlesStore = createCrudStore("articles", articlesService);
 export const useFaqCategoriesStore = createCrudStore("faqCategories", categoriesService);
 export const useCannedResponsesStore = createCrudStore("cannedResponses", cannedResponsesService);
+/** Every mutation refreshes the other loaded stores, so departments pick up category changes for the ticket forms. */
+export const useTicketCategoriesStore = createCrudStore("ticketCategories", ticketCategoriesService);
+export const useTicketSubcategoriesStore = createCrudStore("ticketSubcategories", ticketSubcategoriesService);

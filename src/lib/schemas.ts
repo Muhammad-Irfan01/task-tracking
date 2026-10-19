@@ -114,6 +114,13 @@ export const helpTopicSchema = z.object({
 
 export const faqCategorySchema = z.object({ name: required("Name", 60) });
 
+/** A ticket category stays in the department it was created in; only its name changes. */
+export const ticketCategorySchema = z.object({ department: required("Department"), name: required("Name", 60) });
+export const ticketSubcategorySchema = z.object({
+  categoryId: z.number("Choose a category").int().positive("Choose a category"),
+  name: required("Name", 60),
+});
+
 export const articleSchema = z.object({
   category: required("Category"),
   question: required("Question", 200),
@@ -248,6 +255,8 @@ export type TeamInput = z.infer<typeof teamSchema>;
 export type SlaPlanInput = z.infer<typeof slaPlanSchema>;
 export type HelpTopicInput = z.infer<typeof helpTopicSchema>;
 export type FaqCategoryInput = z.infer<typeof faqCategorySchema>;
+export type TicketCategoryInput = z.infer<typeof ticketCategorySchema>;
+export type TicketSubcategoryInput = z.infer<typeof ticketSubcategorySchema>;
 export type ArticleInput = z.infer<typeof articleSchema>;
 export type CannedResponseInput = z.infer<typeof cannedResponseSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

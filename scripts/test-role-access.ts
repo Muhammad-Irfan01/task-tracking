@@ -9,10 +9,10 @@ import assert from "node:assert/strict";
 import { call, check, createTempOrg, json, run, send, type Session } from "./e2e";
 
 /** Setup pages only admins see; `/organizations` is hidden from everyone. */
-const ADMIN_PAGES = ["/staff", "/employees", "/departments", "/teams", "/sla", "/help-topics"];
+const ADMIN_PAGES = ["/staff", "/employees", "/departments", "/teams", "/sla", "/help-topics", "/ticket-categories"];
 const AGENT_PAGES = ["/", "/tickets", "/customers", "/knowledge-base", "/canned-responses", "/reports", "/settings"];
 /** Setup data any agent may read (ticket screens use it) but only admins may change. */
-const ADMIN_WRITE_APIS = ["/api/departments", "/api/teams", "/api/sla-plans", "/api/help-topics", "/api/organizations"];
+const ADMIN_WRITE_APIS = ["/api/departments", "/api/teams", "/api/sla-plans", "/api/help-topics", "/api/organizations", "/api/ticket-categories"];
 
 async function page(session: Session, path: string) {
   const res = await call(session, path);

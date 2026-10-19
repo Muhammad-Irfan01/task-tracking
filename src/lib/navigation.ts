@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   Network,
   Settings,
+  Tags,
   Ticket,
   Timer,
   UserCog,
@@ -53,6 +54,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Content",
     items: [
       { href: "/help-topics", label: "Help Topics", icon: LifeBuoy, adminOnly: true },
+      { href: "/ticket-categories", label: "Ticket Categories", icon: Tags, adminOnly: true },
       { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
       { href: "/canned-responses", label: "Canned Responses", icon: MessageSquareText },
     ],

@@ -42,3 +42,23 @@ export function CardGridSkeleton({ count = 6, className }: { count?: number; cla
 export function ChartSkeleton({ height = 240 }: { height?: number }) {
   return <Skeleton className="w-full rounded-xl" style={{ height }} />;
 }
+
+/** Generic page placeholder shown by route `loading.tsx` files while a page loads. */
+export function PageSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading page">
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-48 rounded-lg" />
+          <Skeleton className="h-3.5 w-72 max-w-full rounded" />
+        </div>
+        <Skeleton className="hidden h-9 w-32 rounded-xl sm:block" />
+      </div>
+      <div className="surface rounded-2xl px-4 py-2 shadow-soft">
+        {Array.from({ length: rows }, (_, i) => (
+          <RowSkeleton key={i} />
+        ))}
+      </div>
+    </div>
+  );
+}

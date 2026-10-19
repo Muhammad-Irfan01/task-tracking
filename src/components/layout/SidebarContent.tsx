@@ -1,13 +1,21 @@
 "use client";
 
 import { motion } from "motion/react";
-import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { isNavActive, navSectionsFor } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useReport } from "@/hooks/useReport";
 import { useCurrentUser } from "@/components/providers/SessionProvider";
+import { Spinner } from "@/components/ui/Spinner";
 import { Logo } from "./Logo";
+
+/** The item's icon, swapped for a spinner while its page loads. */
+function NavIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus();
+  return pending ? <Spinner className="relative m-0.5" /> : <Icon className="relative h-4.5 w-4.5 shrink-0" />;
+}
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -53,7 +61,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                       />
                     )}
-                    <item.icon className="relative h-4.5 w-4.5 shrink-0" />
+                    <NavIcon icon={item.icon} />
                     <span className="relative">{item.label}</span>
                   </Link>
                 );

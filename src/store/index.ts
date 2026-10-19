@@ -1,3 +1,4 @@
+export * from "./activity.store";
 export * from "./collections";
 export * from "./confirm.store";
 export * from "./create-collection-store";

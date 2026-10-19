@@ -7,11 +7,12 @@ import { apiClient, unwrap } from "./api-client";
 export const portalService = {
   options: () => unwrap<PortalOptions>(apiClient.get("/portal/options")),
   tickets: () => unwrap<Ticket[]>(apiClient.get("/portal/tickets")),
-  ticket: (id: string | number) => unwrap<Ticket>(apiClient.get(`/portal/tickets/${id}`)),
+  ticket: (id: string | number, silent = false) => unwrap<Ticket>(apiClient.get(`/portal/tickets/${id}`, { silent })),
   create: (input: PortalTicketInput) => unwrap<Ticket>(apiClient.post("/portal/tickets", input)),
   setStatus: (id: string | number, status: "Resolved" | "Open") =>
     unwrap<Ticket>(apiClient.patch(`/portal/tickets/${id}`, { status })),
-  messages: (id: string | number) => unwrap<TicketMessage[]>(apiClient.get(`/portal/tickets/${id}/messages`)),
+  messages: (id: string | number, silent = false) =>
+    unwrap<TicketMessage[]>(apiClient.get(`/portal/tickets/${id}/messages`, { silent })),
   attachmentLimits: (id: string | number) => unwrap<AttachmentLimits>(apiClient.get(`/portal/tickets/${id}/attachments`)),
   rate: (id: string | number, rating: number, comment: string) =>
     unwrap<Ticket>(apiClient.put(`/portal/tickets/${id}/rating`, { rating, comment })),

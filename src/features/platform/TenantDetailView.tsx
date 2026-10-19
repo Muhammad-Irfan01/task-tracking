@@ -4,6 +4,7 @@ import { Ban, CheckCircle2, Mail, Plus, ShieldCheck, Trash2 } from "lucide-react
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { BackLink, Button, Card, ErrorState, FormModal, Input, Modal, PageHeader, Select, Skeleton, StatCard, Table, Td, Tr } from "@/components/ui";
+import { usePending } from "@/hooks/usePending";
 import { useZodForm } from "@/hooks/useZodForm";
 import { PLAN_IDS, planLabel, TIMEZONE_OPTIONS } from "@/lib/constants";
 import { tenantAdminSchema, tenantSchema } from "@/lib/schemas";
@@ -19,6 +20,7 @@ export function TenantDetailView({ id }: { id: string }) {
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [invite, setInvite] = useState<{ email: string; invite: InviteResult } | null>(null);
+  const resending = usePending<number>();
 
   const fetchTenant = useCallback(
     () =>
@@ -51,29 +53,30 @@ export function TenantDetailView({ id }: { id: string }) {
 
   async function toggleStatus() {
     const next = suspended ? "Active" : "Suspended";
-    const ok = await confirm({
-      title: suspended ? `Reactivate ${tenant!.name}?` : `Suspend ${tenant!.name}?`,
-      description: suspended
-        ? "Its admins and staff can sign in again."
-        : "Everyone in this organization is signed out and can't sign in until you reactivate it. No data is deleted.",
-      confirmLabel: suspended ? "Reactivate" : "Suspend",
-      tone: suspended ? "primary" : "danger",
-    });
-    if (!ok) return;
     try {
-      setTenant(await platformService.updateTenant(tenant!.id, { status: next }));
-      toast.success(suspended ? "Organization reactivated" : "Organization suspended");
+      const ok = await confirm({
+        title: suspended ? `Reactivate ${tenant!.name}?` : `Suspend ${tenant!.name}?`,
+        description: suspended
+          ? "Its admins and staff can sign in again."
+          : "Everyone in this organization is signed out and can't sign in until you reactivate it. No data is deleted.",
+        confirmLabel: suspended ? "Reactivate" : "Suspend",
+        tone: suspended ? "primary" : "danger",
+        action: async () => setTenant(await platformService.updateTenant(tenant!.id, { status: next })),
+      });
+      if (ok) toast.success(suspended ? "Organization reactivated" : "Organization suspended");
     } catch (e) {
       toast.error(errorMessage(e));
     }
   }
 
   async function resend(staffId: number, email: string) {
-    try {
-      setInvite({ email, invite: await platformService.resendInvite(tenant!.id, staffId) });
-    } catch (e) {
-      toast.error(errorMessage(e));
-    }
+    await resending.run(staffId, async () => {
+      try {
+        setInvite({ email, invite: await platformService.resendInvite(tenant!.id, staffId) });
+      } catch (e) {
+        toast.error(errorMessage(e));
+      }
+    });
   }
 
   return (
@@ -132,7 +135,7 @@ export function TenantDetailView({ id }: { id: string }) {
                 <Td muted>{!m.active ? "Deactivated" : m.hasPassword ? "Active" : "Invited"}</Td>
                 <Td className="text-right">
                   {!m.hasPassword && m.active && (
-                    <Button variant="ghost" size="sm" onClick={() => resend(m.id, m.email)}>
+                    <Button variant="ghost" size="sm" onClick={() => resend(m.id, m.email)} loading={resending.isPending(m.id)}>
                       <Mail className="h-3.5 w-3.5" /> Resend invite
                     </Button>
                   )}

@@ -24,15 +24,15 @@ export function useEntityDialog<T>() {
 
 /** Confirms, deletes, and reports the outcome — the server explains blocked deletes. */
 export async function confirmDelete(label: string, name: string, remove: () => Promise<void>) {
-  const ok = await confirm({
-    title: `Delete ${label}?`,
-    description: `“${name}” will be permanently removed. This can't be undone.`,
-    confirmLabel: "Delete",
-    tone: "danger",
-  });
-  if (!ok) return false;
   try {
-    await remove();
+    const ok = await confirm({
+      title: `Delete ${label}?`,
+      description: `“${name}” will be permanently removed. This can't be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+      action: remove,
+    });
+    if (!ok) return false;
     toast.success(`${label[0].toUpperCase()}${label.slice(1)} deleted`);
     return true;
   } catch (error) {

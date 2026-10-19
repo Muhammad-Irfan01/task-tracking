@@ -1,5 +1,16 @@
 import axios, { AxiosError } from "axios";
+import { useActivityStore } from "@/store/activity.store";
 import type { ApiError } from "@/types";
+
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /** Background requests (polling) that shouldn't drive the global progress bar. */
+    silent?: boolean;
+  }
+  interface InternalAxiosRequestConfig {
+    tracked?: boolean;
+  }
+}
 
 /** Shared axios instance. Point NEXT_PUBLIC_API_URL at a real backend to swap out the mock API. */
 export const apiClient = axios.create({
@@ -15,9 +26,25 @@ interface ErrorBody {
   errors?: Record<string, string>;
 }
 
+apiClient.interceptors.request.use((config) => {
+  if (!config.silent && typeof window !== "undefined") {
+    config.tracked = true;
+    useActivityStore.getState().start();
+  }
+  return config;
+});
+
+function settle(config?: { tracked?: boolean }) {
+  if (config?.tracked) useActivityStore.getState().finish();
+}
+
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    settle(response.config);
+    return response;
+  },
   (error: AxiosError<ErrorBody>) => {
+    settle(error.config);
     // Session expired or was revoked: send the user back to sign in.
     const onAuthPage = typeof window !== "undefined" && AUTH_PAGES.some((p) => window.location.pathname.startsWith(p));
     if (error.response?.status === 401 && typeof window !== "undefined" && !onAuthPage) {

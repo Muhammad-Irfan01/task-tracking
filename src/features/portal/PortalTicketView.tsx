@@ -112,8 +112,8 @@ export function PortalTicketView({ id }: { id: string }) {
   const isClient = useIsClient();
 
   const refresh = useCallback(
-    () =>
-      Promise.all([portalService.ticket(id), portalService.messages(id)])
+    (silent = false) =>
+      Promise.all([portalService.ticket(id, silent), portalService.messages(id, silent)])
         .then(([t, m]) => {
           setTicket(t);
           setMessages(m);
@@ -126,7 +126,7 @@ export function PortalTicketView({ id }: { id: string }) {
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void refresh(true);
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [refresh]);

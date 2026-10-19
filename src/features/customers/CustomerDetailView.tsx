@@ -21,6 +21,7 @@ import {
 import { CustomerFormModal } from "@/features/forms/CustomerFormModal";
 import { useCollection } from "@/hooks/useCollection";
 import { confirmDelete, useEntityDialog } from "@/hooks/useEntityDialog";
+import { usePending } from "@/hooks/usePending";
 import { formatDate, timeAgo } from "@/lib/utils";
 import { errorMessage } from "@/services";
 import { toast, useCustomersStore, useTicketsStore } from "@/store";
@@ -35,6 +36,7 @@ export function CustomerDetailView({ id }: { id: string }) {
   const tickets = useCollection(useTicketsStore);
   const { update, remove } = useCustomersStore();
   const dialog = useEntityDialog<Customer>();
+  const pending = usePending<"lock">();
   const customer = customers.items.find((c) => String(c.id) === id);
   const history = useMemo(
     () => (customer ? tickets.items.filter((t) => t.customerEmail === customer.email) : []),
@@ -68,12 +70,14 @@ export function CustomerDetailView({ id }: { id: string }) {
   async function toggleLock() {
     if (!customer) return;
     const next = customer.status === "Locked" ? "Active" : "Locked";
-    try {
-      await update(customer.id, { status: next });
-      toast.success(next === "Locked" ? `${customer.name}'s account is locked` : `${customer.name}'s account is unlocked`);
-    } catch (error) {
-      toast.error(errorMessage(error));
-    }
+    await pending.run("lock", async () => {
+      try {
+        await update(customer.id, { status: next });
+        toast.success(next === "Locked" ? `${customer.name}'s account is locked` : `${customer.name}'s account is unlocked`);
+      } catch (error) {
+        toast.error(errorMessage(error));
+      }
+    });
   }
 
   async function onDelete() {
@@ -118,7 +122,7 @@ export function CustomerDetailView({ id }: { id: string }) {
                 <Button variant="secondary" size="sm" onClick={() => customer && dialog.openEdit(customer)}>
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
-                <Button variant="secondary" size="sm" onClick={toggleLock}>
+                <Button variant="secondary" size="sm" onClick={toggleLock} loading={pending.isPending("lock")}>
                   {customer.status === "Locked" ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
                   {customer.status === "Locked" ? "Unlock" : "Lock"}
                 </Button>

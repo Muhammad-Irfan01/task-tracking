@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "./Spinner";
 
 interface SwitchProps {
   checked: boolean;
@@ -10,10 +11,12 @@ interface SwitchProps {
   label?: string;
   description?: string;
   disabled?: boolean;
+  /** Disables the switch and spins its knob while a save is in flight. */
+  loading?: boolean;
   className?: string;
 }
 
-export function Switch({ checked, onChange, label, description, disabled, className }: SwitchProps) {
+export function Switch({ checked, onChange, label, description, disabled, loading = false, className }: SwitchProps) {
   const id = useId();
   const control = (
     <button
@@ -22,7 +25,8 @@ export function Switch({ checked, onChange, label, description, disabled, classN
       role="switch"
       aria-checked={checked}
       aria-label={label ? undefined : "Toggle"}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       onClick={() => onChange(!checked)}
       className={cn(
         "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:opacity-50",
@@ -32,8 +36,10 @@ export function Switch({ checked, onChange, label, description, disabled, classN
       <motion.span
         layout
         transition={{ type: "spring", bounce: 0.3, duration: 0.3 }}
-        className={cn("h-4 w-4 rounded-full bg-white shadow-soft", checked && "ml-auto")}
-      />
+        className={cn("flex h-4 w-4 items-center justify-center rounded-full bg-white text-brand-500 shadow-soft", checked && "ml-auto")}
+      >
+        {loading && <Spinner className="h-2.5 w-2.5 border-[1.5px]" />}
+      </motion.span>
     </button>
   );
   if (!label) return control;

@@ -34,34 +34,32 @@ export function TicketCategoriesView() {
 
   async function removeCategory(category: TicketCategoryEntry) {
     const subs = category.subcategories.length;
-    const ok = await confirm({
-      title: "Delete category?",
-      description: `“${category.name}”${subs ? ` and its ${plural(subs, "sub-category", "sub-categories")}` : ""} will be removed.${
-        category.tickets ? ` ${plural(category.tickets, "ticket")} keep their department but lose this category.` : ""
-      } This can't be undone.`,
-      confirmLabel: "Delete",
-      tone: "danger",
-    });
-    if (!ok) return;
     try {
-      await remove(category.id);
-      toast.success("Category deleted");
+      const ok = await confirm({
+        title: "Delete category?",
+        description: `“${category.name}”${subs ? ` and its ${plural(subs, "sub-category", "sub-categories")}` : ""} will be removed.${
+          category.tickets ? ` ${plural(category.tickets, "ticket")} keep their department but lose this category.` : ""
+        } This can't be undone.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+        action: () => remove(category.id),
+      });
+      if (ok) toast.success("Category deleted");
     } catch (error) {
       toast.error(errorMessage(error));
     }
   }
 
   async function removeSubcategory(sub: { id: number; name: string; tickets: number }) {
-    const ok = await confirm({
-      title: "Delete sub-category?",
-      description: `“${sub.name}” will be removed.${sub.tickets ? ` ${plural(sub.tickets, "ticket")} keep their category but lose this sub-category.` : ""} This can't be undone.`,
-      confirmLabel: "Delete",
-      tone: "danger",
-    });
-    if (!ok) return;
     try {
-      await subcategories.remove(sub.id);
-      toast.success("Sub-category deleted");
+      const ok = await confirm({
+        title: "Delete sub-category?",
+        description: `“${sub.name}” will be removed.${sub.tickets ? ` ${plural(sub.tickets, "ticket")} keep their category but lose this sub-category.` : ""} This can't be undone.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+        action: () => subcategories.remove(sub.id),
+      });
+      if (ok) toast.success("Sub-category deleted");
     } catch (error) {
       toast.error(errorMessage(error));
     }

@@ -10,6 +10,7 @@ import { AgentFormModal } from "@/features/forms/AgentFormModal";
 import { useCollection } from "@/hooks/useCollection";
 import { useDebounce } from "@/hooks/useDebounce";
 import { confirmDelete, useEntityDialog } from "@/hooks/useEntityDialog";
+import { usePending } from "@/hooks/usePending";
 import { errorMessage } from "@/services";
 import { toast, useStaffStore } from "@/store";
 import type { Agent } from "@/types";
@@ -19,6 +20,7 @@ export function StaffView({ initialQuery = "" }: { initialQuery?: string }) {
   const { items, isLoading, status, error, refetch } = useCollection(useStaffStore);
   const { update, remove } = useStaffStore();
   const dialog = useEntityDialog<Agent>();
+  const saving = usePending<number>();
   const [search, setSearch] = useState(initialQuery);
   const query = useDebounce(search, 250).toLowerCase();
   const filtered = useMemo(
@@ -30,12 +32,14 @@ export function StaffView({ initialQuery = "" }: { initialQuery?: string }) {
   );
 
   async function toggleVacation(agent: Agent) {
-    try {
-      await update(agent.id, { onVacation: !agent.onVacation });
-      toast.success(agent.onVacation ? `${agent.name} is back from vacation` : `${agent.name} is on vacation — new tickets will skip them`);
-    } catch (e) {
-      toast.error(errorMessage(e));
-    }
+    await saving.run(agent.id, async () => {
+      try {
+        await update(agent.id, { onVacation: !agent.onVacation });
+        toast.success(agent.onVacation ? `${agent.name} is back from vacation` : `${agent.name} is on vacation — new tickets will skip them`);
+      } catch (e) {
+        toast.error(errorMessage(e));
+      }
+    });
   }
 
   const canManage = (agent: Agent) => user.isAdmin || agent.id === user.id;
@@ -108,7 +112,7 @@ export function StaffView({ initialQuery = "" }: { initialQuery?: string }) {
                   <span className="flex items-center gap-1.5 text-xs text-ink-900/60 dark:text-paper-100/60">
                     <PlaneTakeoff className={agent.onVacation ? "h-3.5 w-3.5 text-amber-500" : "h-3.5 w-3.5"} /> On vacation
                   </span>
-                  <Switch checked={agent.onVacation} onChange={() => toggleVacation(agent)} />
+                  <Switch checked={agent.onVacation} onChange={() => toggleVacation(agent)} loading={saving.isPending(agent.id)} />
                 </div>
               )}
             </Card>

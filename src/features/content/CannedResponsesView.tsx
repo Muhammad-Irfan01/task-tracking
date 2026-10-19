@@ -9,6 +9,7 @@ import { CannedResponseFormModal } from "@/features/forms/CannedResponseFormModa
 import { useCollection } from "@/hooks/useCollection";
 import { useDebounce } from "@/hooks/useDebounce";
 import { confirmDelete, useEntityDialog } from "@/hooks/useEntityDialog";
+import { usePending } from "@/hooks/usePending";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/services";
 import { toast, useCannedResponsesStore } from "@/store";
@@ -27,6 +28,7 @@ export function CannedResponsesView() {
   const { items, isLoading, status, error, refetch } = useCollection(useCannedResponsesStore);
   const { update, remove } = useCannedResponsesStore();
   const dialog = useEntityDialog<CannedResponse>();
+  const saving = usePending<number>();
   const [openId, setOpenId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const query = useDebounce(search, 250).toLowerCase();
@@ -36,12 +38,14 @@ export function CannedResponsesView() {
   );
 
   async function toggle(response: CannedResponse) {
-    try {
-      await update(response.id, { enabled: !response.enabled });
-      toast.success(response.enabled ? `${response.title} disabled` : `${response.title} enabled`);
-    } catch (e) {
-      toast.error(errorMessage(e));
-    }
+    await saving.run(response.id, async () => {
+      try {
+        await update(response.id, { enabled: !response.enabled });
+        toast.success(response.enabled ? `${response.title} disabled` : `${response.title} enabled`);
+      } catch (e) {
+        toast.error(errorMessage(e));
+      }
+    });
   }
 
   return (
@@ -103,7 +107,7 @@ export function CannedResponsesView() {
                   <div className="border-t border-ink-900/[0.06] px-4 pb-4 dark:border-paper-100/[0.06]">
                     <p className="whitespace-pre-line pt-3 text-sm leading-relaxed text-ink-800 dark:text-paper-100/80">{response.body}</p>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <Switch label="Enabled" checked={response.enabled} onChange={() => toggle(response)} className="gap-3" />
+                      <Switch label="Enabled" checked={response.enabled} onChange={() => toggle(response)} loading={saving.isPending(response.id)} className="gap-3" />
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => copyToClipboard(response.body)}>
                           <Copy className="h-3.5 w-3.5" /> Copy

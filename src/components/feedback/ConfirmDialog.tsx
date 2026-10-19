@@ -8,20 +8,21 @@ import { useConfirmStore } from "@/store/confirm.store";
 export function ConfirmDialog() {
   const request = useConfirmStore((state) => state.request);
   const settle = useConfirmStore((state) => state.settle);
+  const busy = useConfirmStore((state) => state.busy);
   const danger = request?.tone !== "primary";
 
   return (
     <Modal
       open={!!request}
-      onClose={() => settle(false)}
+      onClose={() => void settle(false)}
       title={request?.title ?? ""}
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={() => settle(false)}>
+          <Button variant="secondary" onClick={() => void settle(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant={danger ? "danger" : "primary"} onClick={() => settle(true)} data-autofocus>
+          <Button variant={danger ? "danger" : "primary"} onClick={() => void settle(true)} loading={busy} data-autofocus>
             {request?.confirmLabel ?? "Confirm"}
           </Button>
         </>

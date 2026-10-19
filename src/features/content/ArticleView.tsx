@@ -8,6 +8,7 @@ import { BackLink, Badge, Button, Card, EmptyState, ErrorState, LinkButton, Skel
 import { ArticleFormModal } from "@/features/forms/ArticleFormModal";
 import { useCollection } from "@/hooks/useCollection";
 import { confirmDelete, useEntityDialog } from "@/hooks/useEntityDialog";
+import { usePending } from "@/hooks/usePending";
 import { articlesService, errorMessage } from "@/services";
 import { toast, useArticlesStore } from "@/store";
 import type { FaqArticle } from "@/types";
@@ -20,6 +21,7 @@ export function ArticleView({ id }: { id: string }) {
   const { items, isLoading, status, error, refetch } = useCollection(useArticlesStore);
   const { update, remove } = useArticlesStore();
   const dialog = useEntityDialog<FaqArticle>();
+  const pending = usePending<"publish">();
   const article = items.find((a) => String(a.id) === id);
 
   useEffect(() => {
@@ -57,12 +59,14 @@ export function ArticleView({ id }: { id: string }) {
 
   async function togglePublished() {
     if (!article) return;
-    try {
-      await update(article.id, { published: !article.published });
-      toast.success(article.published ? "Moved back to drafts" : "Article published");
-    } catch (e) {
-      toast.error(errorMessage(e));
-    }
+    await pending.run("publish", async () => {
+      try {
+        await update(article.id, { published: !article.published });
+        toast.success(article.published ? "Moved back to drafts" : "Article published");
+      } catch (e) {
+        toast.error(errorMessage(e));
+      }
+    });
   }
 
   async function onDelete() {
@@ -86,7 +90,7 @@ export function ArticleView({ id }: { id: string }) {
                 <Eye className="h-3.5 w-3.5" /> {article.views.toLocaleString("en-US")} views
               </p>
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={togglePublished}>
+                <Button variant="ghost" size="sm" onClick={togglePublished} loading={pending.isPending("publish")}>
                   {article.published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   {article.published ? "Unpublish" : "Publish"}
                 </Button>

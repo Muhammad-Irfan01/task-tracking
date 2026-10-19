@@ -9,7 +9,7 @@ import { NotificationsMenu } from "@/components/layout/NotificationsMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { useCurrentUser } from "@/components/providers/SessionProvider";
-import { LinkButton } from "@/components/ui";
+import { LinkButton, LinkPending } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -39,13 +39,14 @@ export function PortalShell({ children }: { children: ReactNode }) {
                 href={item.href}
                 aria-current={active(item.href) ? "page" : undefined}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium",
+                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium",
                   active(item.href)
                     ? "bg-brand-500/10 text-brand-600 dark:text-brand-300"
                     : "text-ink-900/60 hover:bg-ink-900/[0.04] dark:text-paper-100/60 dark:hover:bg-paper-100/[0.06]",
                 )}
               >
                 {item.label}
+                <LinkPending className="h-3 w-3" />
               </Link>
             ))}
           </nav>

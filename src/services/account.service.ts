@@ -44,7 +44,7 @@ export interface NotificationFeed {
 }
 
 export const notificationsService = {
-  list: () => unwrap<NotificationFeed>(apiClient.get("/notifications")),
+  list: () => unwrap<NotificationFeed>(apiClient.get("/notifications", { silent: true })),
   markRead: (ids?: string[]) => unwrap<NotificationFeed>(apiClient.post("/notifications/read", { ids })),
 };
 

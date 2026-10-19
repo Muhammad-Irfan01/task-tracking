@@ -1,5 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "./Spinner";
 
 const VARIANTS = {
   primary: "bg-brand-500 text-white hover:bg-brand-600 shadow-soft",
@@ -49,9 +50,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={buttonClasses({ variant, size, className })}
       {...props}
     >
-      {loading && (
-        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" />
-      )}
+      {loading && <Spinner />}
       {children}
     </button>
   );
